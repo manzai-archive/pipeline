@@ -6,7 +6,7 @@
 # Usage: ./scripts/overnight.sh
 # Env: HF_TOKEN must be set (in pipeline/.env)
 
-set -uo pipefail
+set -o pipefail
 
 cd "$(dirname "$0")/.."
 PIPELINE_DIR="$(pwd)"
