@@ -1,9 +1,10 @@
 from __future__ import annotations
-from datetime import datetime
+import os
+import subprocess
+from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Optional
-
-import os
 
 import yaml
 from slugify import slugify
@@ -13,6 +14,23 @@ from pipeline.diarize.speakers import Turn
 from pipeline.sources.base import FetchResult
 
 DEFAULT_CONTRIBUTOR = os.environ.get("MANZAI_CONTRIBUTOR", "wheatfox")
+
+
+def _pipeline_version() -> str:
+    try:
+        return version("manzai-archive-pipeline")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _yt_dlp_version() -> str:
+    try:
+        out = subprocess.run(
+            ["yt-dlp", "--version"], capture_output=True, text=True, check=True
+        )
+        return out.stdout.strip()
+    except Exception:
+        return "unknown"
 
 
 def _speaker_for(t: float, turns: list[Turn]) -> str:
@@ -60,6 +78,28 @@ def _iso_date(yyyymmdd: str) -> str:
     return yyyymmdd
 
 
+def _ensure_performer(content_dir: Path, slug: str, language: str) -> None:
+    """Auto-stub a performer file if it doesn't exist yet, so build doesn't
+    fail on first ingest of a new group. The stub has TODO fields for the
+    contributor to fill in via PR."""
+    performers_dir = content_dir.parent / "performers"
+    performers_dir.mkdir(parents=True, exist_ok=True)
+    f = performers_dir / f"{slug}.yaml"
+    if f.exists():
+        return
+    stub = {
+        "display_name": f"TODO ({slug})",
+        "language": language,
+        "region": "TODO",
+        "members": [],
+        "description": (
+            f"Auto-stub created by pipeline. Please fill in display_name, "
+            f"region, and members."
+        ),
+    }
+    f.write_text(yaml.safe_dump(stub, allow_unicode=True, sort_keys=False))
+
+
 def write_script(
     *,
     out_dir: Path,
@@ -71,6 +111,8 @@ def write_script(
     tags: list[str],
     sensitivity: str,
     language: str,
+    asr_backend: str,
+    asr_model: str,
 ) -> Path:
     title = title_override or fetched.title
     group = group_slug or "unknown"
@@ -79,18 +121,26 @@ def write_script(
     fname = f"{group}-{year}-{slug}.md"
     out_path = out_dir / fname
 
+    _ensure_performer(out_dir, group, language)
+
     lines = _group_into_lines(words, turns)
     speakers = sorted({sp for sp, _, _ in lines})
 
     frontmatter = {
         "title": title,
-        "performers": [{"name": group, "members": []}],
+        "performers": [group],
         "source": {
             "platform": fetched.platform,
             "url": fetched.source_url,
             "uploader": fetched.uploader,
             "uploaded_at": _iso_date(fetched.upload_date),
             "duration_sec": fetched.duration_sec,
+            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "fetched_with": (
+                f"yt-dlp/{_yt_dlp_version()}"
+                if fetched.platform in ("youtube", "bilibili")
+                else "ffmpeg"
+            ),
         },
         "language": language,
         "tags": tags,
@@ -98,6 +148,20 @@ def write_script(
         "sensitivity": sensitivity,
         "status": "draft",
         "contributed_by": DEFAULT_CONTRIBUTOR,
+        "ingestion": {
+            "pipeline_version": _pipeline_version(),
+            "asr": {
+                "backend": asr_backend,
+                "model": asr_model,
+                "detected_language": language,
+                "word_count": len(words),
+            },
+            "diarization": {
+                "model": "pyannote/speaker-diarization-3.1",
+                "num_speakers": len(speakers),
+                "turn_count": len(turns),
+            },
+        },
     }
 
     body: list[str] = [
