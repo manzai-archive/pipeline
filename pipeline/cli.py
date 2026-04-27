@@ -21,27 +21,38 @@ def cli():
 
 
 @cli.command()
-@click.argument("url")
-@click.option("--group-slug", default=None, help="Slug of the performer group (e.g. reiwaroman)")
+@click.argument("source")
+@click.option("--group-slug", default=None, help="Slug of the performer group (e.g. nakagawake)")
 @click.option("--title", default=None, help="Override title")
 @click.option("--tag", "tags", multiple=True, help="Repeatable tag")
 @click.option("--sensitivity", type=click.Choice(["normal", "high"]), default="normal")
-@click.option("--language", default="ja")
+@click.option(
+    "--language",
+    default=None,
+    help="ISO code (ja, zh, en, ...). Default: auto-detect from audio.",
+)
 @click.option("--num-speakers", default=2, type=int)
-def ingest(url, group_slug, title, tags, sensitivity, language, num_speakers):
-    """Fetch URL → transcribe → diarize → write draft script.md."""
+def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers):
+    """Fetch URL or local file → transcribe → diarize → write draft script.md."""
     config.WORK_DIR.mkdir(exist_ok=True, parents=True)
     config.CONTENT_DIR.mkdir(exist_ok=True, parents=True)
 
     console.rule("[bold]1/4 fetch")
-    fetched = fetch(url, config.WORK_DIR)
-    console.print(f"  audio: {fetched.audio_path}")
-    console.print(f"  title: {fetched.title}")
+    console.print(f"  source: {source}")
+    fetched = fetch(source, config.WORK_DIR)
+    console.print(f"  audio:  {fetched.audio_path}")
+    console.print(f"  title:  {fetched.title}")
+    console.print(f"  duration: {fetched.duration_sec}s")
 
     console.rule("[bold]2/4 transcribe")
+    console.print(f"  backend: {config.WHISPER_BACKEND}  model: {config.WHISPER_MODEL}")
     prompt = load_prompt(config.LEXICON_PATH)
-    words = transcribe(fetched.audio_path, language=language, initial_prompt=prompt)
-    console.print(f"  {len(words)} words")
+    words, detected_lang = transcribe(
+        fetched.audio_path,
+        language=language,
+        initial_prompt=prompt,
+    )
+    console.print(f"  {len(words)} words, language={detected_lang}")
 
     console.rule("[bold]3/4 diarize")
     turns = diarize(fetched.audio_path, num_speakers=num_speakers)
@@ -58,7 +69,7 @@ def ingest(url, group_slug, title, tags, sensitivity, language, num_speakers):
         title_override=title,
         tags=list(tags),
         sensitivity=sensitivity,
-        language=language,
+        language=detected_lang,
     )
     console.print(f"  → {out}")
     console.rule("[green]done")
@@ -80,17 +91,23 @@ def batch(ctx, batch_path):
         console.print("[yellow]No entries in submissions.yaml")
         return
     for e in entries:
-        url = e["url"]
+        src = e.get("url") or e.get("path") or e.get("source")
+        if not src:
+            console.print(f"[red]skip: no url/path/source in {e}")
+            continue
         group = e.get("group_slug")
         override = e.get("override", {}) or {}
-        console.rule(f"[cyan]{url}")
-        ctx.invoke(
-            ingest,
-            url=url,
-            group_slug=group,
-            title=override.get("title"),
-            tags=tuple(override.get("tags", [])),
-            sensitivity=override.get("sensitivity", "normal"),
-            language=override.get("language", "ja"),
-            num_speakers=override.get("num_speakers", 2),
-        )
+        console.rule(f"[cyan]{src}")
+        try:
+            ctx.invoke(
+                ingest,
+                source=src,
+                group_slug=group,
+                title=override.get("title"),
+                tags=tuple(override.get("tags", [])),
+                sensitivity=override.get("sensitivity", "normal"),
+                language=override.get("language"),
+                num_speakers=override.get("num_speakers", 2),
+            )
+        except Exception as exc:
+            console.print(f"[red]FAILED: {exc}")

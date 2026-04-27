@@ -16,6 +16,24 @@ class Turn:
 _pipeline = None
 
 
+def _pick_device():
+    import torch
+
+    setting = config.PYANNOTE_DEVICE
+    if setting == "cpu":
+        return torch.device("cpu")
+    if setting == "cuda" and torch.cuda.is_available():
+        return torch.device("cuda")
+    if setting == "mps" and torch.backends.mps.is_available():
+        return torch.device("mps")
+    if setting == "auto":
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+    return torch.device("cpu")
+
+
 def _load():
     global _pipeline
     if _pipeline is None:
@@ -27,10 +45,26 @@ def _load():
             )
         from pyannote.audio import Pipeline
 
-        _pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            use_auth_token=config.HF_TOKEN,
-        )
+        try:
+            _pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                use_auth_token=config.HF_TOKEN,
+            )
+        except TypeError:
+            _pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                token=config.HF_TOKEN,
+            )
+
+        device = _pick_device()
+        try:
+            _pipeline.to(device)
+        except Exception as e:
+            # MPS lacks some ops in pyannote — silently fall back to CPU
+            import torch
+            if device.type != "cpu":
+                print(f"  diarize: {device} failed ({e}), falling back to CPU")
+                _pipeline.to(torch.device("cpu"))
     return _pipeline
 
 
