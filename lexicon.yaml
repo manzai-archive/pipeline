@@ -1,0 +1,30 @@
+# Proper nouns and recurring terms. Concatenated and fed to Whisper as
+# initial_prompt to bias decoding toward correct spellings.
+
+groups:
+  - 令和ロマン
+  - 中川家
+  - ナイツ
+  - サンドウィッチマン
+  - 霜降り明星
+  - ミルクボーイ
+  - 錦鯉
+  - マヂカルラブリー
+  - かまいたち
+  - 千鳥
+  - 笑い飯
+  - ダウンタウン
+  - とろサーモン
+
+people:
+  - 髙比良くるま
+  - 松井ケムリ
+  - 駒場孝
+  - 内海崇
+
+shows:
+  - M-1グランプリ
+  - キングオブコント
+  - THE MANZAI
+  - 爆笑オンエアバトル
+  - 漫才新人大賞

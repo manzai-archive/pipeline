@@ -1,0 +1,12 @@
+# Queue of URLs to ingest. Run `python -m pipeline batch`.
+# Move processed entries to submissions.done.yaml manually.
+
+entries:
+  # - url: https://www.youtube.com/watch?v=XXXXXXXXXXX
+  #   group_slug: reiwaroman
+  #   override:
+  #     title: 令和ロマン M-1グランプリ 2022 決勝
+  #     tags: [M-1, 2022, 決勝]
+  #     sensitivity: high
+  #     language: ja
+  #     num_speakers: 2
