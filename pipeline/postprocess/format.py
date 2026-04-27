@@ -3,12 +3,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import os
+
 import yaml
 from slugify import slugify
 
 from pipeline.asr.transcribe import Word
 from pipeline.diarize.speakers import Turn
 from pipeline.sources.base import FetchResult
+
+DEFAULT_CONTRIBUTOR = os.environ.get("MANZAI_CONTRIBUTOR", "wheatfox")
 
 
 def _speaker_for(t: float, turns: list[Turn]) -> str:
@@ -93,6 +97,7 @@ def write_script(
         "speakers": {s: s for s in speakers},
         "sensitivity": sensitivity,
         "status": "draft",
+        "contributed_by": DEFAULT_CONTRIBUTOR,
     }
 
     body: list[str] = [

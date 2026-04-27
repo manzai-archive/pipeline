@@ -3,6 +3,8 @@
 Python pipeline that ingests video URLs (YouTube, Bilibili) and produces draft
 markdown scripts with speaker labels for the [manzai-archive web site](https://github.com/manzai-archive/web).
 
+Maintainer: [wheatfox](https://github.com/enkerewpo)
+
 ## Setup
 
 ```bash
