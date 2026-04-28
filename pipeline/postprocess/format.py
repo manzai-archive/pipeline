@@ -254,8 +254,10 @@ def write_script(
     slug = slugify(title, allow_unicode=True, max_length=40) or fetched.raw_id
     # Append a short source id so two videos with identical model-generated
     # titles (qwen-omni occasionally hallucinates the same bit name across
-    # different videos) don't collide and overwrite each other.
-    short_id = (fetched.raw_id or "")[:6]
+    # different videos) don't collide and overwrite each other. Lowercased
+    # so the on-disk filename matches Astro's lowercased entry.id (which
+    # otherwise breaks the `Edit on GitHub` deep link).
+    short_id = (fetched.raw_id or "")[:6].lower()
     fname = f"{group}-{year}-{slug}-{short_id}.md" if short_id else f"{group}-{year}-{slug}.md"
     out_path = out_dir / fname
 
