@@ -74,8 +74,11 @@ def diarize(audio: Path, num_speakers: Optional[int] = 2) -> list[Turn]:
     if num_speakers:
         kwargs["num_speakers"] = num_speakers
     diar = pl(str(audio), **kwargs)
+    # pyannote 4.x returns a DiarizeOutput dataclass; 3.x returns Annotation
+    # directly. Unwrap to the Annotation in either case.
+    annotation = getattr(diar, "speaker_diarization", diar)
     out: list[Turn] = []
-    for segment, _, speaker in diar.itertracks(yield_label=True):
+    for segment, _, speaker in annotation.itertracks(yield_label=True):
         out.append(
             Turn(start=float(segment.start), end=float(segment.end), speaker=speaker)
         )
