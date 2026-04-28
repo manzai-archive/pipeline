@@ -12,12 +12,33 @@ import base64
 import json
 import os
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional
 
 import yaml
 
 from .transcribe import Word
+
+
+def _to_mp3(src: Path, bitrate: str = "64k") -> Path:
+    """Compress to mono 16kHz mp3 to stay well under the 28 MB JSON-string
+    limit on DashScope's input_audio data URI."""
+    fd, out = tempfile.mkstemp(suffix=".mp3")
+    os.close(fd)
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-i", str(src),
+            "-ac", "1", "-ar", "16000",
+            "-b:a", bitrate,
+            "-loglevel", "error",
+            out,
+        ],
+        check=True,
+    )
+    return Path(out)
 
 
 def _client():
@@ -43,7 +64,7 @@ def _model_name() -> str:
     )
 
 
-def _b64(path: Path, mime: str = "audio/wav") -> str:
+def _b64(path: Path, mime: str = "audio/mpeg") -> str:
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
 
 
@@ -112,26 +133,30 @@ def transcribe_qwen_omni(
     client = _client()
     prompt = _build_prompt(group_slug, content_dir or Path("."), language)
 
-    completion = client.chat.completions.create(
-        model=_model_name(),
-        messages=[
-            {
-                "role": "system",
-                "content": "Output strictly valid JSON. No markdown. No commentary.",
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_audio",
-                        "input_audio": {"data": _b64(audio), "format": "wav"},
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            },
-        ],
-        modalities=["text"],
-    )
+    mp3 = _to_mp3(audio)
+    try:
+        completion = client.chat.completions.create(
+            model=_model_name(),
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Output strictly valid JSON. No markdown. No commentary.",
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "input_audio": {"data": _b64(mp3), "format": "mp3"},
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                },
+            ],
+            modalities=["text"],
+        )
+    finally:
+        mp3.unlink(missing_ok=True)
     raw = (completion.choices[0].message.content or "").strip()
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.M).strip()
 
