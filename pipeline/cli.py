@@ -58,14 +58,14 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
             )
 
     console.rule("[bold]2/4 transcribe")
-    console.print(f"  backend: {config.WHISPER_BACKEND}  model: {config.WHISPER_MODEL}")
+    console.print(f"  backend: {config.ASR_BACKEND}")
     prompt = load_prompt(config.LEXICON_PATH)
     words, detected_lang = transcribe(
         fetched.audio_path,
         language=language,
         initial_prompt=prompt,
     )
-    console.print(f"  {len(words)} words, language={detected_lang}")
+    console.print(f"  {len(words)} segments, language={detected_lang}")
 
     console.rule("[bold]3/4 diarize")
     turns = diarize(fetched.audio_path, num_speakers=num_speakers)
@@ -73,7 +73,12 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.print(f"  {len(turns)} turns, speakers={speakers}")
 
     console.rule("[bold]4/4 write")
-    asr_model = config.MLX_WHISPER_REPO if config.WHISPER_BACKEND == "mlx" else config.WHISPER_MODEL
+    if config.ASR_BACKEND == "sensevoice":
+        asr_model = "FunAudioLLM/SenseVoiceSmall"
+    elif config.ASR_BACKEND == "mlx":
+        asr_model = config.MLX_WHISPER_REPO
+    else:
+        asr_model = config.WHISPER_MODEL
     out = write_script(
         out_dir=config.CONTENT_DIR,
         fetched=fetched,
@@ -84,7 +89,7 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
         tags=list(tags),
         sensitivity=sensitivity,
         language=detected_lang,
-        asr_backend=config.WHISPER_BACKEND,
+        asr_backend=config.ASR_BACKEND,
         asr_model=asr_model,
     )
     console.print(f"  → {out}")

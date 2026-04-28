@@ -51,7 +51,12 @@ RUN pip install --index-url https://download.pytorch.org/whl/cu126 \
 
 # Pipeline runtime deps. Install separately from the package so the layer
 # caches across pipeline source edits.
+# - funasr / modelscope: SenseVoice (default ASR, multilingual zh/ja/en)
+# - faster-whisper: fallback ASR
+# - pyannote.audio 4.x: speaker diarization
 RUN pip install \
+        "funasr>=1.1.0" \
+        "modelscope>=1.18.0" \
         "faster-whisper>=1.1.0" \
         "pyannote.audio>=3.3.0,<5.0.0" \
         "ctranslate2>=4.4.0" \
@@ -70,7 +75,7 @@ RUN pip install -e .
 # Users set proxy at runtime via .env if needed.
 ENV HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= NO_PROXY= no_proxy=
 
-ENV WHISPER_BACKEND=faster \
+ENV ASR_BACKEND=sensevoice \
     WHISPER_DEVICE=cuda \
     WHISPER_COMPUTE_TYPE=float16 \
     WHISPER_MODEL=large-v3-turbo \
