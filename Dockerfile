@@ -60,6 +60,7 @@ RUN pip install \
         "faster-whisper>=1.1.0" \
         "pyannote.audio>=3.3.0,<5.0.0" \
         "ctranslate2>=4.4.0" \
+        "openai>=1.52.0" \
         click pyyaml rich python-slugify python-dotenv hf_transfer
 
 # Install the pipeline package itself (editable).

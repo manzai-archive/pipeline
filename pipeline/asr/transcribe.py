@@ -176,17 +176,19 @@ def _transcribe_faster(audio, language, initial_prompt) -> tuple[list[Word], str
 def _resolve_backend(language: Optional[str]) -> str:
     """Backend selection.
 
-    ASR_BACKEND=auto picks per-language because SenseVoice-Small (234M) is
-    SOTA for Chinese but noticeably worse than Whisper-large-v3 for Japanese.
-    Force a specific backend with ASR_BACKEND=sensevoice|faster|mlx.
+    ASR_BACKEND=auto picks the best-quality backend for the language:
+    - if QWEN_API_KEY/VLM_API_KEY present → qwen3-asr-flash (cloud SOTA)
+    - else: zh/auto → SenseVoice; ja → faster-whisper or mlx-whisper.
+    Force with ASR_BACKEND=qwen|sensevoice|faster|mlx.
     """
     b = config.ASR_BACKEND
     if b != "auto":
         return b
+    import os
+    if os.environ.get("QWEN_API_KEY") or os.environ.get("VLM_API_KEY"):
+        return "qwen"
     lang = (language or "").lower()
     if lang.startswith("ja"):
-        # Whisper-large-v3 is much stronger than SenseVoice on Japanese.
-        # On Apple Silicon we'd prefer mlx-whisper; in container we run faster-whisper on CUDA.
         return "mlx" if config.IS_APPLE_SILICON else "faster"
     return "sensevoice"
 
@@ -198,6 +200,9 @@ def transcribe(
 ) -> tuple[list[Word], str]:
     """Return (words, detected_language). language=None → auto-detect."""
     backend = _resolve_backend(language)
+    if backend == "qwen":
+        from pipeline.asr.qwen import transcribe_qwen
+        return transcribe_qwen(audio, language, initial_prompt)
     if backend == "sensevoice":
         return _transcribe_sensevoice(audio, language, initial_prompt)
     if backend == "mlx":
