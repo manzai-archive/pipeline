@@ -176,18 +176,17 @@ def _transcribe_faster(audio, language, initial_prompt) -> tuple[list[Word], str
 def _resolve_backend(language: Optional[str]) -> str:
     """Backend selection.
 
-    ASR_BACKEND=auto picks the best end-to-end pipeline for the language:
-    - if QWEN_API_KEY/VLM_API_KEY present → qwen-omni (multimodal: ASR
-      + speaker tagging using member context, no pyannote needed)
-    - else: zh → SenseVoice; ja → faster-whisper or mlx-whisper.
-    Force with ASR_BACKEND=qwen-omni|qwen|sensevoice|faster|mlx.
+    ASR_BACKEND=auto picks per-language local backends:
+    - ja → mlx-whisper (Apple Silicon) or faster-whisper (CUDA/CPU)
+    - zh / other → SenseVoice (CUDA, multilingual, fast)
+
+    qwen-omni is no longer auto-selected — output truncation can drop
+    content for long performances. Use explicit ASR_BACKEND=qwen-omni
+    if you want it.
     """
     b = config.ASR_BACKEND
     if b != "auto":
         return b
-    import os
-    if os.environ.get("QWEN_API_KEY") or os.environ.get("VLM_API_KEY"):
-        return "qwen-omni"
     lang = (language or "").lower()
     if lang.startswith("ja"):
         return "mlx" if config.IS_APPLE_SILICON else "faster"
