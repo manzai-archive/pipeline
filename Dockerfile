@@ -8,6 +8,19 @@
 
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04
 
+# Optional build-time proxy (for restricted networks). Pass via:
+#   HTTP_PROXY=http://host:port HTTPS_PROXY=... docker compose build
+# These ARGs only affect build steps; runtime proxy is set via .env.
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG NO_PROXY=localhost,127.0.0.1
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    http_proxy=${HTTP_PROXY} \
+    https_proxy=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    no_proxy=${NO_PROXY}
+
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -51,6 +64,10 @@ COPY pipeline ./pipeline
 RUN pip install -e .
 
 # Defaults assume NVIDIA GPU; override via env if needed.
+# Strip build-time proxy from image so runtime doesn't inherit it.
+# Users set proxy at runtime via .env if needed.
+ENV HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= NO_PROXY= no_proxy=
+
 ENV WHISPER_BACKEND=faster \
     WHISPER_DEVICE=cuda \
     WHISPER_COMPUTE_TYPE=float16 \
