@@ -146,6 +146,49 @@ def _resolve_speaker_names(
         return {sp: sp for sp in sorted({t.speaker for t in turns})}
 
 
+def _normalize_speaker_names(turns: list, content_dir: Path, group_slug: str) -> list:
+    """Map turn speaker labels to the canonical member names from the
+    performer registry (handles traditional/simplified glyph drift, etc.).
+    Names already matching a member name are left as-is."""
+    try:
+        import yaml as _yaml
+        from difflib import SequenceMatcher
+
+        group_yaml = content_dir.parent / "performers" / f"{group_slug}.yaml"
+        if not group_yaml.exists():
+            return turns
+        data = _yaml.safe_load(group_yaml.read_text()) or {}
+        members = [m.get("name") for m in (data.get("members") or []) if m.get("name")]
+        if not members:
+            return turns
+    except Exception:
+        return turns
+
+    cache: dict[str, str] = {}
+    out = []
+    for t in turns:
+        sp = getattr(t, "speaker", None)
+        if sp is None:
+            out.append(t)
+            continue
+        if sp in members:
+            out.append(t)
+            continue
+        if sp in cache:
+            t.speaker = cache[sp]
+            out.append(t)
+            continue
+        best = max(members, key=lambda m: SequenceMatcher(None, sp, m).ratio())
+        ratio = SequenceMatcher(None, sp, best).ratio()
+        if ratio >= 0.5:
+            cache[sp] = best
+            t.speaker = best
+        else:
+            cache[sp] = sp
+        out.append(t)
+    return out
+
+
 def _ensure_performer(content_dir: Path, slug: str, language: str) -> None:
     """Auto-stub a performer file if it doesn't exist yet, so build doesn't
     fail on first ingest of a new group. The stub has TODO fields for the
@@ -199,6 +242,10 @@ def write_script(
     out_path = out_dir / fname
 
     _ensure_performer(out_dir, group, language)
+
+    # Normalize qwen-omni speaker names against canonical member list
+    # (handles 礼 vs 禮 / drift between traditional & simplified glyphs).
+    turns = _normalize_speaker_names(turns, out_dir, group)
 
     lines = _group_into_lines(words, turns)
     speakers = sorted({sp for sp, _, _ in lines})
