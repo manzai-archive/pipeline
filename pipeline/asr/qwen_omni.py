@@ -195,11 +195,13 @@ Task:
    Note: Chinese "脱口秀" duos that follow boke/tsukkomi structure are
    "manzai" (e.g. 漫才兄弟 are categorized as manzai even though the show
    is called 脱口秀大会).
-5. "roles" maps each performer name to their role in THIS specific bit:
-   - manzai: "ツッコミ" / "ボケ" (or for Chinese: "吐槽" / "搞笑" / "捧哏" / "逗哏")
-   - standup: "ソロ" (single performer; only one entry)
-   - sketch: character role/name they play
-   - xiangsheng: "捧哏" / "逗哏"
+5. "roles" maps each performer name to their role in THIS specific bit.
+   IMPORTANT: role labels MUST match the content's primary language:
+   - Japanese 漫才 → "ツッコミ" / "ボケ"
+   - Chinese 漫才 (中国漫才, like 漫才兄弟) → "吐槽 (ツッコミ)" / "搞笑 (ボケ)"
+   - Chinese 相声 → "捧哏" / "逗哏"
+   - 単口 / standup → "単口" or "单口表演者"
+   - sketch → character role/name they play (in source language)
    Always use the performer's real name (from the list above) as the key.
 6. Each segment MUST be: {{"speaker": "<performer name>",
    "start": <seconds float>, "end": <seconds float>,
