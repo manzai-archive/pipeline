@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -14,12 +15,26 @@ class YouTubeSource:
         return _ytdlp_fetch(url, work_dir, platform="youtube")
 
 
+def _proxy_args() -> list[str]:
+    """yt-dlp honours lowercase http_proxy env, but containers usually only
+    set the uppercase HTTPS_PROXY. Forward whichever is set as --proxy."""
+    p = (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+        or ""
+    )
+    return ["--proxy", p] if p else []
+
+
 def _ytdlp_fetch(url: str, work_dir: Path, platform: str) -> FetchResult:
     work_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(work_dir / "%(id)s.%(ext)s")
     subprocess.run(
         [
             "yt-dlp",
+            *_proxy_args(),
             "-x",
             "--audio-format", "wav",
             "--audio-quality", "0",
