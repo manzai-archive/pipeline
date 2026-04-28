@@ -110,7 +110,9 @@ def main(md_path: str) -> None:
     print(f"audio: {audio_path}")
 
     # Performer names from the group YAML (canonical)
-    web_root = config.WORKSPACE_ROOT / "web" / "src" / "content"
+    # CONTENT_DIR points at .../web/src/content/manzai — its parent is the
+    # web content root (which holds performers/, voice_embeddings/, etc.).
+    web_root = config.CONTENT_DIR.parent
     perf_slug = (fm.get("performers") or [None])[0]
     members: list[str] = []
     if perf_slug:
