@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from typing import Optional
 
 import click
 import yaml
@@ -84,13 +85,20 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     from pipeline.asr.transcribe import _resolve_backend
     actual_backend = _resolve_backend(detected_lang)
 
-    # qwen-omni stashes a clean model-generated title; prefer it over the
-    # raw video title (which often has hashtags / channel / show name junk).
-    if title is None and actual_backend == "qwen-omni":
+    # qwen-omni stashes title / form / roles in module-level vars.
+    fm_form: Optional[str] = None
+    fm_roles: Optional[dict] = None
+    if actual_backend == "qwen-omni":
         from pipeline.asr import qwen_omni as _qo
-        if _qo.LAST_TITLE:
+        if title is None and _qo.LAST_TITLE:
             title = _qo.LAST_TITLE
-            console.print(f"  title (model-generated): {title}")
+            console.print(f"  title: {title}")
+        if _qo.LAST_FORM:
+            fm_form = _qo.LAST_FORM
+            console.print(f"  form: {fm_form}")
+        if _qo.LAST_ROLES:
+            fm_roles = _qo.LAST_ROLES
+            console.print(f"  roles: {fm_roles}")
     import os
     if actual_backend == "qwen-omni":
         asr_model = os.environ.get("QWEN_OMNI_MODEL") or "qwen3-omni-flash"
@@ -114,6 +122,8 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
         language=detected_lang,
         asr_backend=actual_backend,
         asr_model=asr_model,
+        form=fm_form,
+        roles=fm_roles,
     )
     console.print(f"  → {out}")
     console.rule("[green]done")

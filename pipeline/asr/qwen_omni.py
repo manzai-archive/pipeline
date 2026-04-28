@@ -88,7 +88,12 @@ def _salvage_partial(raw: str) -> dict:
             "speaker": m.group(1),
             "start": float(m.group(2)),
             "end": float(m.group(3)),
-            "text": m.group(4).encode().decode("unicode_escape", errors="replace"),
+            # Decode the captured raw fragment by re-quoting it as a valid
+            # JSON string. This handles \" \\ \n \uXXXX while preserving
+            # already-decoded UTF-8 characters. The previous version used
+            # .encode().decode("unicode_escape") which mangled multi-byte
+            # UTF-8 (turned はい into ã¯ãã etc.).
+            "text": json.loads('"' + m.group(4) + '"'),
         })
     return {"title": title, "segments": segs}
 
@@ -150,7 +155,8 @@ def _build_prompt(
     if raw_title:
         title_block = f'\nPublished video title: "{raw_title}"\n'
 
-    return f"""You are an expert at transcribing comedy duo (manzai / 漫才) performances.
+    return f"""You are an expert at transcribing comedy performances
+(manzai / 漫才, 脱口秀, コント, 相声, 落語, etc.).
 
 Performers:
 {members_block}
@@ -158,35 +164,52 @@ Performers:
 Task:
 1. Listen to the entire audio.
 2. Output a single JSON object (no other text, no markdown fences):
-   {{"title": "<short clean title>", "segments": [...]}}
-3. The "title" MUST be derived from the published video title above.
-   Extract just the bit name (演目名 / 段子名), removing:
-   - hashtags (#xxx), channel name, year suffixes (「2025央视春晚」etc.)
-   - host show brackets ([xxx综艺], 「CCTV春晚」)
-   - "by <performer>" / "<performer>演绎" prefixes
-   Keep the original wording exactly — do NOT paraphrase or summarize.
-   Wrap in 「」 if not already. Examples:
-   - "中川家の寄席2024　「保険の契約」" → "「保険の契約」"
-   - "徐浩伦 谭湘文演绎对口白话《骗假不留》#脱口秀 #2025央视春晚" → "「骗假不留」"
-   - "中川家の寄席 016「人間ドック」" → "「人間ドック」"
-   If the published title has no extractable bit name, only then infer
-   one from content.
-4. Each segment MUST be: {{"speaker": "<one of the names above>",
+   {{"title": "<bit name>",
+     "form": "<comedy form>",
+     "roles": {{"<performer>": "<role>", ...}},
+     "segments": [...]}}
+3. "title" MUST be derived from the published video title above.
+   Extract just the bit name (演目名 / 段子名), removing hashtags, channel
+   name, year suffixes, show brackets, "by <performer>" prefixes.
+   Keep the original wording exactly — do NOT paraphrase. Wrap in 「」.
+   If the published title has no extractable bit name, infer one from
+   content. Examples:
+   - "中川家の寄席2024 「保険の契約」" → "「保険の契約」"
+   - "徐浩伦 谭湘文演绎《骗假不留》#脱口秀" → "「骗假不留」"
+4. "form" MUST be one of:
+   - "manzai"     — Japanese 漫才 (boke + tsukkomi duo)
+   - "xiangsheng" — Chinese 相声 (捧哏 + 逗哏)
+   - "standup"    — solo standup / スタンダップ / 脱口秀 (single performer)
+   - "sketch"     — コント / 小品 / character-driven scene
+   - "rakugo"     — 落語 (single seated performer, multiple voiced characters)
+   - "other"      — anything else
+   Note: Chinese "脱口秀" duos that follow boke/tsukkomi structure are
+   "manzai" (e.g. 漫才兄弟 are categorized as manzai even though the show
+   is called 脱口秀大会).
+5. "roles" maps each performer name to their role in THIS specific bit:
+   - manzai: "ツッコミ" / "ボケ" (or for Chinese: "吐槽" / "搞笑" / "捧哏" / "逗哏")
+   - standup: "ソロ" (single performer; only one entry)
+   - sketch: character role/name they play
+   - xiangsheng: "捧哏" / "逗哏"
+   Always use the performer's real name (from the list above) as the key.
+6. Each segment MUST be: {{"speaker": "<performer name>",
    "start": <seconds float>, "end": <seconds float>,
    "text": "<verbatim transcript including 语气词 / fillers / interjections>"}}
-   IMPORTANT: "speaker" MUST be the literal performer NAME from the list
-   above (e.g. "中川剛", not "ツッコミ"; "徐浩伦", not "甲"). Never use
-   role labels.
-5. Split into natural sentence-sized turns (≤30s each). Preserve filler
-   words (ええ, あー, 嗯, 哎呀, etc.).
-6. Use voice characteristics first; fall back to role-based linguistic
-   cues if voices are similar.
-7. Do NOT translate; transcribe in the original spoken language.
-8. The output MUST be a complete, well-formed JSON object — no truncation."""
+   "speaker" MUST be the literal performer NAME, NEVER a role label.
+7. Split into natural sentence-sized turns (≤30s each). Preserve filler
+   words (ええ, あー, 嗯, 哎呀).
+8. Use voice characteristics first; fall back to role-based linguistic
+   cues (ツッコミ catchphrases) if voices are similar.
+9. Do NOT translate; transcribe in the original spoken language.
+10. The output MUST be a complete, well-formed JSON object — no truncation."""
 
 
-# Stash for the most-recent qwen-omni call's title (read by cli.py).
+# Stash for the most-recent qwen-omni call's metadata (read by cli.py /
+# format.py). Module-level for simplicity; rewrite if we ever need to
+# parallelize qwen-omni calls within one process.
 LAST_TITLE: str = ""
+LAST_FORM: str = ""
+LAST_ROLES: dict[str, str] = {}
 
 
 def transcribe_qwen_omni(
@@ -212,6 +235,8 @@ def transcribe_qwen_omni(
     chunk_starts = [s for s in range(0, int(duration), _CHUNK_SEC)] or [0]
 
     chunk_titles: list[str] = []
+    chunk_forms: list[str] = []
+    chunk_roles: list[dict] = []
     all_segments: list[dict] = []
 
     for cstart in chunk_starts:
@@ -266,13 +291,23 @@ def transcribe_qwen_omni(
             print(f"  chunk @{cstart}s: salvaged {len(data['segments'])} segments from truncated response")
 
         ctitle = ""
+        cform = ""
+        croles: dict = {}
         if isinstance(data, dict):
             ctitle = str(data.get("title") or "").strip()
+            cform = str(data.get("form") or "").strip().lower()
+            raw_roles = data.get("roles") or {}
+            if isinstance(raw_roles, dict):
+                croles = {str(k): str(v) for k, v in raw_roles.items()}
             csegs = data.get("segments") or []
         else:
             csegs = data
         if ctitle:
             chunk_titles.append(ctitle)
+        if cform:
+            chunk_forms.append(cform)
+        if croles:
+            chunk_roles.append(croles)
 
         # Offset segment timestamps by chunk start
         for s in csegs:
@@ -285,6 +320,15 @@ def transcribe_qwen_omni(
 
     # Pick the first non-empty chunk title as the canonical bit name
     title = next((t for t in chunk_titles if t), "")
+    # Form: pick the most-frequent value across chunks
+    form = ""
+    if chunk_forms:
+        from collections import Counter
+        form = Counter(chunk_forms).most_common(1)[0][0]
+    # Roles: merge across chunks (later chunks override)
+    roles: dict[str, str] = {}
+    for r in chunk_roles:
+        roles.update(r)
 
     words: list[Word] = []
     turns: list[Turn] = []
@@ -298,6 +342,8 @@ def transcribe_qwen_omni(
         words.append(Word(start=start, end=end, text=text))
         turns.append(Turn(start=start, end=end, speaker=speaker))
 
-    global LAST_TITLE
+    global LAST_TITLE, LAST_FORM, LAST_ROLES
     LAST_TITLE = title
+    LAST_FORM = form
+    LAST_ROLES = roles
     return words, (language or "auto"), turns

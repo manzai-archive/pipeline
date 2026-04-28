@@ -181,6 +181,8 @@ def write_script(
     language: str,
     asr_backend: str,
     asr_model: str,
+    form: Optional[str] = None,
+    roles: Optional[dict[str, str]] = None,
 ) -> Path:
     title = (title_override or fetched.title or "").strip()
     # Clean obvious YouTube-title noise
@@ -227,9 +229,11 @@ def write_script(
             else "draft"
         )
 
+    fm_form = form or "manzai"
     frontmatter = {
         "title": title,
         "performers": [group],
+        "form": fm_form,
         "source": {
             "platform": fetched.platform,
             "url": fetched.source_url,
@@ -246,6 +250,7 @@ def write_script(
         "language": language,
         "tags": tags,
         "speakers": speaker_field,
+        **({"roles": roles} if roles else {}),
         "sensitivity": sensitivity,
         "status": auto_status,
         "contributed_by": DEFAULT_CONTRIBUTOR,
