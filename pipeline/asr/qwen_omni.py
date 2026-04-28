@@ -295,9 +295,8 @@ def transcribe_qwen_omni(
         if data is None:
             data = _salvage_partial(raw)
             if not data.get("segments"):
-                raise RuntimeError(
-                    f"qwen-omni chunk @{cstart}s gave no parseable segments: {raw[:300]}"
-                )
+                print(f"  chunk @{cstart}s: 0 parseable segments, skipping (raw head: {raw[:120]})")
+                continue
             print(f"  chunk @{cstart}s: salvaged {len(data['segments'])} segments from truncated response")
 
         ctitle = ""
