@@ -75,10 +75,18 @@ def _client():
 
 
 def _salvage_partial(raw: str) -> dict:
-    """Best-effort recovery from truncated JSON: extract whatever segment
-    objects parsed cleanly before the cutoff."""
+    """Best-effort recovery from truncated JSON: extract whatever
+    title / form / roles / segments parsed cleanly before the cutoff."""
     title_m = re.search(r'"title"\s*:\s*"([^"]*)"', raw)
     title = title_m.group(1) if title_m else ""
+    form_m = re.search(r'"form"\s*:\s*"([^"]*)"', raw)
+    form = form_m.group(1) if form_m else ""
+    # roles: capture whatever appears between "roles": { ... } until first }
+    roles: dict[str, str] = {}
+    roles_block = re.search(r'"roles"\s*:\s*\{([^}]*)\}', raw)
+    if roles_block:
+        for km in re.finditer(r'"([^"]+)"\s*:\s*"([^"]*)"', roles_block.group(1)):
+            roles[km.group(1)] = km.group(2)
     seg_pat = re.compile(
         r'\{"speaker"\s*:\s*"([^"]+)"\s*,\s*"start"\s*:\s*([0-9.]+)\s*,\s*"end"\s*:\s*([0-9.]+)\s*,\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}',
     )
@@ -88,14 +96,11 @@ def _salvage_partial(raw: str) -> dict:
             "speaker": m.group(1),
             "start": float(m.group(2)),
             "end": float(m.group(3)),
-            # Decode the captured raw fragment by re-quoting it as a valid
-            # JSON string. This handles \" \\ \n \uXXXX while preserving
-            # already-decoded UTF-8 characters. The previous version used
-            # .encode().decode("unicode_escape") which mangled multi-byte
-            # UTF-8 (turned はい into ã¯ãã etc.).
+            # Re-quote captured fragment as JSON string for proper escape
+            # handling without mangling multi-byte UTF-8.
             "text": json.loads('"' + m.group(4) + '"'),
         })
-    return {"title": title, "segments": segs}
+    return {"title": title, "form": form, "roles": roles, "segments": segs}
 
 
 def _model_name() -> str:
