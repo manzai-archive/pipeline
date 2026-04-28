@@ -32,10 +32,9 @@ URLS=(
   "https://www.youtube.com/watch?v=OuaztBkaSP8|nakagawake|寄席,2025,となりのマダム|normal|"
   "https://www.youtube.com/watch?v=FWXlwdgyXY4|nakagawake|寄席,2024,デパート|normal|"
   "https://www.youtube.com/watch?v=a88gqadWS-Y|nakagawake|寄席,2023,おばちゃんタクシー|normal|"
-  # 漫才兄弟 (徐浩伦 + 谭湘文) — Chinese manzai
+  # 漫才兄弟 (徐浩伦 + 谭湘文) — Chinese manzai, single broadcast acts only
   "https://www.youtube.com/watch?v=VVVqPKkS9zc|manzai-brothers|央视春晚,2025,骗假不留|normal|zh"
   "https://www.youtube.com/watch?v=_Fw3jXi5Eyk|manzai-brothers|湖南春晚,2025,理发师|normal|zh"
-  "https://www.youtube.com/watch?v=vKLVy2p12tA|manzai-brothers|脱口秀,2024,总决赛,柯南|high|zh"
 )
 
 ok=0

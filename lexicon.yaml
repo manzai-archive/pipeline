@@ -2,6 +2,7 @@
 # initial_prompt to bias decoding toward correct spellings.
 
 groups:
+  # Japanese
   - 令和ロマン
   - 中川家
   - ナイツ
@@ -15,16 +16,38 @@ groups:
   - 笑い飯
   - ダウンタウン
   - とろサーモン
+  # Chinese
+  - 漫才兄弟
+  - 嘻哈包袱铺
+  - 德云社
 
 people:
+  # Japanese
   - 髙比良くるま
   - 松井ケムリ
   - 駒場孝
   - 内海崇
+  - 中川剛
+  - 中川礼二
+  # Chinese
+  - 徐浩伦
+  - 谭湘文
+  - 阎鹤祥
+  - 何广智
+  - 大张伟
+  - 小四爷
 
 shows:
+  # Japanese
   - M-1グランプリ
   - キングオブコント
   - THE MANZAI
   - 爆笑オンエアバトル
   - 漫才新人大賞
+  # Chinese
+  - 央视春晚
+  - 湖南卫视春晚
+  - 脱口秀和Ta的朋友们
+  - 脱口秀大会
+  - 喜剧之王单口季
+  - 一年一度喜剧大赛

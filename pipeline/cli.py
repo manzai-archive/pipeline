@@ -44,6 +44,19 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.print(f"  title:  {fetched.title}")
     console.print(f"  duration: {fetched.duration_sec}s")
 
+    # Sanity guards — see feedback memory: clip/compilation/multi-act content
+    # breaks pyannote num_speakers=2 and pollutes the corpus.
+    bad_keywords = ("合集", "高光", "精选", "纯享", "EP", "评委", "拜年", "采访")
+    if fetched.duration_sec > 1500:
+        raise click.ClickException(
+            f"Refusing: {fetched.duration_sec}s > 1500s — likely a compilation."
+        )
+    for kw in bad_keywords:
+        if kw in (fetched.title or ""):
+            raise click.ClickException(
+                f"Refusing: title contains '{kw}' — likely not a single act."
+            )
+
     console.rule("[bold]2/4 transcribe")
     console.print(f"  backend: {config.WHISPER_BACKEND}  model: {config.WHISPER_MODEL}")
     prompt = load_prompt(config.LEXICON_PATH)

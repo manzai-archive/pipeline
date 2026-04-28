@@ -48,27 +48,56 @@ def _hms(s: float) -> str:
     return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
+_SENTENCE_END = "。.！!?？…ですよねかな"  # JP/zh/en sentence-final markers
+_LONG_GAP_SEC = 0.8  # silence between words → likely sentence boundary
+_MIN_LINE_CHARS = 2
+
+
+def _ends_sentence(text: str) -> bool:
+    if not text:
+        return False
+    t = text.rstrip()
+    if not t:
+        return False
+    return t[-1] in "。.！!?？…"
+
+
 def _group_into_lines(
     words: list[Word], turns: list[Turn]
 ) -> list[tuple[str, float, str]]:
+    """Group words into lines, breaking on:
+       - speaker change
+       - >0.8s silence between consecutive words
+       - previous word ended with sentence-final punctuation
+       This produces readable short turns even when pyannote merges multiple
+       short exchanges into one big speaker segment."""
     if not words or not turns:
         return []
     lines: list[tuple[str, float, str]] = []
     cur_speaker = _speaker_for((words[0].start + words[0].end) / 2, turns)
     cur_start = words[0].start
     cur_text: list[str] = []
+    prev_end = words[0].start
+
+    def flush():
+        joined = "".join(cur_text).strip()
+        if len(joined) >= _MIN_LINE_CHARS:
+            lines.append((cur_speaker, cur_start, joined))
+
     for w in words:
         mid = (w.start + w.end) / 2
         sp = _speaker_for(mid, turns)
-        if sp != cur_speaker:
-            joined = "".join(cur_text).strip()
-            if joined:
-                lines.append((cur_speaker, cur_start, joined))
+        gap = w.start - prev_end
+        prev_text = "".join(cur_text)
+        speaker_change = sp != cur_speaker
+        silence_break = gap > _LONG_GAP_SEC
+        sentence_end = _ends_sentence(prev_text)
+        if cur_text and (speaker_change or silence_break or sentence_end):
+            flush()
             cur_speaker, cur_start, cur_text = sp, w.start, []
         cur_text.append(w.text)
-    joined = "".join(cur_text).strip()
-    if joined:
-        lines.append((cur_speaker, cur_start, joined))
+        prev_end = w.end
+    flush()
     return lines
 
 
@@ -114,10 +143,17 @@ def write_script(
     asr_backend: str,
     asr_model: str,
 ) -> Path:
-    title = title_override or fetched.title
+    title = (title_override or fetched.title or "").strip()
+    # Clean obvious YouTube-title noise
+    import re
+    title = re.sub(r"#\S+", "", title).strip()  # strip hashtags
+    title = re.sub(r"\s+", " ", title)
+    if len(title) > 80:
+        title = title[:80].rstrip() + "…"
     group = group_slug or "unknown"
     year = (fetched.upload_date or "")[:4] or datetime.now().strftime("%Y")
-    slug = slugify(title, allow_unicode=False, max_length=60) or fetched.raw_id
+    # allow_unicode=True keeps CJK characters in slug (much nicer than romanization)
+    slug = slugify(title, allow_unicode=True, max_length=40) or fetched.raw_id
     fname = f"{group}-{year}-{slug}.md"
     out_path = out_dir / fname
 
