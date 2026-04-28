@@ -11,6 +11,15 @@
 
 set -o pipefail
 
+# Proxy for `git push` and other host-side network ops. The container
+# gets its own proxy via .env. Set GIT_PROXY=http://... in your shell
+# to override; leave unset on hosts with direct internet.
+GIT_PROXY="${GIT_PROXY:-${HTTPS_PROXY:-}}"
+if [ -n "$GIT_PROXY" ]; then
+    export HTTPS_PROXY="$GIT_PROXY"
+    export HTTP_PROXY="$GIT_PROXY"
+fi
+
 cd "$(dirname "$0")/.."
 PIPELINE_DIR="$(pwd)"
 WEB_DIR="$(cd ../web && pwd)"
