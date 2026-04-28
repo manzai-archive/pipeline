@@ -31,11 +31,11 @@ PARALLEL="${PARALLEL:-3}"
 # Format: URL | group_slug | comma-separated tags | sensitivity | language(opt)
 URLS=(
   # 中川家 official channel — full 寄席 acts
-  "https://www.youtube.com/watch?v=gsg50GXGnQI|nakagawake|寄席,2024,保険|normal|"
-  "https://www.youtube.com/watch?v=Xg5hR1b8buY|nakagawake|寄席,人間ドック|normal|"
-  "https://www.youtube.com/watch?v=OuaztBkaSP8|nakagawake|寄席,2025,となりのマダム|normal|"
-  "https://www.youtube.com/watch?v=FWXlwdgyXY4|nakagawake|寄席,2024,デパート|normal|"
-  "https://www.youtube.com/watch?v=a88gqadWS-Y|nakagawake|寄席,2023,おばちゃんタクシー|normal|"
+  "https://www.youtube.com/watch?v=gsg50GXGnQI|nakagawake|寄席,2024,保険|normal|ja"
+  "https://www.youtube.com/watch?v=Xg5hR1b8buY|nakagawake|寄席,人間ドック|normal|ja"
+  "https://www.youtube.com/watch?v=OuaztBkaSP8|nakagawake|寄席,2025,となりのマダム|normal|ja"
+  "https://www.youtube.com/watch?v=FWXlwdgyXY4|nakagawake|寄席,2024,デパート|normal|ja"
+  "https://www.youtube.com/watch?v=a88gqadWS-Y|nakagawake|寄席,2023,おばちゃんタクシー|normal|ja"
   # 漫才兄弟 (徐浩伦 + 谭湘文) — Chinese manzai
   "https://www.youtube.com/watch?v=VVVqPKkS9zc|manzai-brothers|央视春晚,2025,骗假不留|normal|zh"
   "https://www.youtube.com/watch?v=_Fw3jXi5Eyk|manzai-brothers|湖南春晚,2025,理发师|normal|zh"

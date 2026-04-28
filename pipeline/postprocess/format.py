@@ -280,6 +280,31 @@ def write_script(
             else "draft"
         )
 
+    # Fallback: if ASR didn't supply roles/form, derive them from the
+    # performer registry (members[].role + default_form). This is what
+    # makes downstream text_classify usable for entries ingested by
+    # local ASR backends that don't return speaker-role metadata.
+    if not roles or not form:
+        try:
+            import yaml as _yaml
+            group_yaml = out_dir.parent / "performers" / f"{group}.yaml"
+            if group_yaml.exists():
+                gdata = _yaml.safe_load(group_yaml.read_text()) or {}
+                if not roles:
+                    derived: dict[str, str] = {}
+                    for m in gdata.get("members") or []:
+                        name = m.get("name")
+                        role = m.get("role")
+                        if name and role:
+                            derived[name] = role
+                    if derived:
+                        roles = derived
+                if not form:
+                    form = gdata.get("default_form")
+        except Exception as e:
+            import sys
+            print(f"  registry fallback: {e}", file=sys.stderr)
+
     fm_form = form or "manzai"
     frontmatter = {
         "title": title,

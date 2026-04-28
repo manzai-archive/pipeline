@@ -15,7 +15,7 @@ import yaml
 
 
 _LINE_RE = re.compile(r"^\*\*(.+?)\*\*\s*\[(\d{2}:\d{2}:\d{2})\]\s*(.+)$")
-_BATCH = 50
+_BATCH = 25
 
 
 def _client():
@@ -96,9 +96,41 @@ def main(md_path: str) -> None:
     perf = fm.get("performers", ["?"])[0]
     form = fm.get("form", "manzai")
     language = fm.get("language", "zh")
+    roles = fm.get("roles") or {}
+
+    # Pull canonical member names from the performer registry so the LLM
+    # can fix homophone misrecognitions of names (徐昊伦 → 徐浩伦, etc.).
+    member_names: list[str] = list(roles.keys())
+    if not member_names:
+        try:
+            registry = (
+                md.parent.parent.parent / "performers" / f"{perf}.yaml"
+            )
+            if registry.exists():
+                data = yaml.safe_load(registry.read_text()) or {}
+                member_names = [
+                    m.get("name") for m in (data.get("members") or [])
+                    if m.get("name")
+                ]
+        except Exception:
+            pass
+
+    role_block = ""
+    if roles:
+        role_lines = "\n".join(f"  - {n}: {r}" for n, r in roles.items())
+        role_block = f"\nRoles:\n{role_lines}"
+    name_block = ""
+    if member_names:
+        name_block = (
+            "\nCanonical performer names (fix homophone ASR errors of these "
+            "EXACTLY — e.g. 徐昊伦 → 徐浩伦, 中川礼二 vs 中川禮二): "
+            + " / ".join(member_names)
+        )
+
     context = (
         f"Transcript of: {title}\n"
         f"Performers: {perf}\nForm: {form}\nLanguage: {language}"
+        f"{role_block}{name_block}"
     )
 
     body_lines: list[tuple[int, str, str]] = []  # (file_line_idx, text, prefix)
