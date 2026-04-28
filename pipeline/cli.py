@@ -60,17 +60,24 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.rule("[bold]2/4 transcribe")
     console.print(f"  backend: {config.ASR_BACKEND}")
     prompt = load_prompt(config.LEXICON_PATH)
-    words, detected_lang = transcribe(
+    words, detected_lang, pre_turns = transcribe(
         fetched.audio_path,
         language=language,
         initial_prompt=prompt,
+        group_slug=group_slug,
+        content_dir=config.CONTENT_DIR,
     )
     console.print(f"  {len(words)} segments, language={detected_lang}")
 
     console.rule("[bold]3/4 diarize")
-    turns = diarize(fetched.audio_path, num_speakers=num_speakers)
-    speakers = sorted({t.speaker for t in turns})
-    console.print(f"  {len(turns)} turns, speakers={speakers}")
+    if pre_turns:
+        turns = pre_turns
+        speakers = sorted({t.speaker for t in turns})
+        console.print(f"  using ASR-supplied turns: {len(turns)}, speakers={speakers}")
+    else:
+        turns = diarize(fetched.audio_path, num_speakers=num_speakers)
+        speakers = sorted({t.speaker for t in turns})
+        console.print(f"  {len(turns)} turns, speakers={speakers}")
 
     console.rule("[bold]4/4 write")
     from pipeline.asr.transcribe import _resolve_backend

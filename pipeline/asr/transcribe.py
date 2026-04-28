@@ -176,17 +176,18 @@ def _transcribe_faster(audio, language, initial_prompt) -> tuple[list[Word], str
 def _resolve_backend(language: Optional[str]) -> str:
     """Backend selection.
 
-    ASR_BACKEND=auto picks the best-quality backend for the language:
-    - if QWEN_API_KEY/VLM_API_KEY present → qwen3-asr-flash (cloud SOTA)
-    - else: zh/auto → SenseVoice; ja → faster-whisper or mlx-whisper.
-    Force with ASR_BACKEND=qwen|sensevoice|faster|mlx.
+    ASR_BACKEND=auto picks the best end-to-end pipeline for the language:
+    - if QWEN_API_KEY/VLM_API_KEY present → qwen-omni (multimodal: ASR
+      + speaker tagging using member context, no pyannote needed)
+    - else: zh → SenseVoice; ja → faster-whisper or mlx-whisper.
+    Force with ASR_BACKEND=qwen-omni|qwen|sensevoice|faster|mlx.
     """
     b = config.ASR_BACKEND
     if b != "auto":
         return b
     import os
     if os.environ.get("QWEN_API_KEY") or os.environ.get("VLM_API_KEY"):
-        return "qwen"
+        return "qwen-omni"
     lang = (language or "").lower()
     if lang.startswith("ja"):
         return "mlx" if config.IS_APPLE_SILICON else "faster"
@@ -197,14 +198,30 @@ def transcribe(
     audio: Path,
     language: Optional[str] = None,
     initial_prompt: Optional[str] = None,
-) -> tuple[list[Word], str]:
-    """Return (words, detected_language). language=None → auto-detect."""
+    group_slug: Optional[str] = None,
+    content_dir: Optional[Path] = None,
+) -> tuple[list[Word], str, Optional[list]]:
+    """Return (words, detected_language, optional_turns).
+
+    Backends that produce speaker-tagged output (e.g. qwen-omni) return a
+    populated `turns` list with member names already assigned, in which case
+    the caller should skip pyannote diarization. Other backends return None.
+    """
     backend = _resolve_backend(language)
+    if backend == "qwen-omni":
+        from pipeline.asr.qwen_omni import transcribe_qwen_omni
+        return transcribe_qwen_omni(
+            audio, language, group_slug or "unknown", content_dir
+        )
     if backend == "qwen":
         from pipeline.asr.qwen import transcribe_qwen
-        return transcribe_qwen(audio, language, initial_prompt)
+        words, lang = transcribe_qwen(audio, language, initial_prompt)
+        return words, lang, None
     if backend == "sensevoice":
-        return _transcribe_sensevoice(audio, language, initial_prompt)
+        words, lang = _transcribe_sensevoice(audio, language, initial_prompt)
+        return words, lang, None
     if backend == "mlx":
-        return _transcribe_mlx(audio, language, initial_prompt)
-    return _transcribe_faster(audio, language, initial_prompt)
+        words, lang = _transcribe_mlx(audio, language, initial_prompt)
+        return words, lang, None
+    words, lang = _transcribe_faster(audio, language, initial_prompt)
+    return words, lang, None
