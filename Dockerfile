@@ -27,8 +27,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HUB_ENABLE_HF_TRANSFER=1
 
 # System deps — Python 3.12, ffmpeg for transcoding, curl/git/ca-certs for fetching.
+# libpython3.12-dev pulls in libpython3.12.so.1.0 which torchcodec dlopens
+# at runtime (used by pyannote.audio 4.x).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.12 python3.12-venv python3-pip \
+        python3.12 python3.12-venv python3-pip libpython3.12-dev \
         ffmpeg git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,11 +51,9 @@ RUN pip install --index-url https://download.pytorch.org/whl/cu126 \
 
 # Pipeline runtime deps. Install separately from the package so the layer
 # caches across pipeline source edits.
-# Pyannote pinned to 3.x because 4.x pulls in torchcodec which needs
-# libpython3.12.so.1.0 (not shipped by Ubuntu's python3.12 package).
 RUN pip install \
         "faster-whisper>=1.1.0" \
-        "pyannote.audio>=3.3.0,<4.0.0" \
+        "pyannote.audio>=3.3.0,<5.0.0" \
         "ctranslate2>=4.4.0" \
         click pyyaml rich python-slugify python-dotenv hf_transfer
 
