@@ -36,18 +36,25 @@ def _polish_batch(client, model: str, lines: list[str], context: str) -> list[st
     numbered = "\n".join(f"{i + 1}. {ln}" for i, ln in enumerate(lines))
     prompt = (
         f"{context}\n\n"
-        "Below are transcript lines from automatic speech recognition. "
-        "Some lines may have ASR errors (homophones, missing characters, "
-        "wrong word boundaries). Review each line and output a corrected "
-        "version in the SAME ORDER, ONE per input line.\n\n"
-        "Rules:\n"
-        "- Fix obvious ASR errors only; do NOT change meaning, do NOT translate, "
-        "do NOT add explanation, do NOT remove interjections / fillers.\n"
-        "- Preserve filler words (嗯, 哎呀, ええ, あー).\n"
-        "- Preserve punctuation style; add punctuation only if missing.\n"
-        "- If a line is already correct, output it as-is.\n\n"
+        "Below are transcript lines from automatic speech recognition.\n\n"
+        "VERY STRICT RULES — only fix CLEAR ASR errors:\n"
+        "- Homophone mistakes (e.g. 川贝 mis-transcribed as 穿倍, "
+        "阿莫西林 → 阿木西林, 谭湘文 → 谭山文).\n"
+        "- Missing or extra characters in obvious words.\n"
+        "- Wrong word boundaries (e.g. 「下次再来」 → 「下，次再来」).\n"
+        "- Add punctuation only if completely missing at sentence end.\n\n"
+        "DO NOT, under any circumstance:\n"
+        "- Rephrase or rewrite for fluency.\n"
+        "- Change meaning, even subtly.\n"
+        "- Translate, summarize, expand, or shorten.\n"
+        "- Remove or modify interjections / fillers (嗯, 哎呀, ええ, あー).\n"
+        "- Change formal/informal register.\n"
+        "- Combine or split lines.\n\n"
+        "If you are not >95% sure something is an ASR error, leave it as-is. "
+        "When in doubt, DO NOTHING.\n\n"
         "Output a single JSON array of strings, length exactly equal to "
-        "the input. No commentary, no markdown.\n\nInput:\n" + numbered
+        "the input, in the same order. No commentary, no markdown.\n\n"
+        "Input:\n" + numbered
     )
     completion = client.chat.completions.create(
         model=model,
