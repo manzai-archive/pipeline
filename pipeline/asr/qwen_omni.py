@@ -172,9 +172,11 @@ Task:
 1. Listen to the entire audio.
 2. Output a single JSON object (no other text, no markdown fences):
    {{"title": "<bit name>",
+     "language": "<ISO 639-1: ja | zh | en | ko | yue>",
      "form": "<comedy form>",
      "roles": {{"<performer>": "<role>", ...}},
      "segments": [...]}}
+   "language" is the ISO 639-1 code of the spoken language.
 3. "title" MUST be derived from the published video title above.
    Extract just the bit name (演目名 / 段子名), removing hashtags, channel
    name, year suffixes, show brackets, "by <performer>" prefixes.
