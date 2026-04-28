@@ -227,11 +227,25 @@ def write_script(
     form: Optional[str] = None,
     roles: Optional[dict[str, str]] = None,
 ) -> Path:
-    title = (title_override or fetched.title or "").strip()
+    raw_title = (fetched.title or "").strip()
+    title = (title_override or raw_title).strip()
     # Clean obvious YouTube-title noise
     import re
     title = re.sub(r"#\S+", "", title).strip()  # strip hashtags
     title = re.sub(r"\s+", " ", title)
+    # Always ask LLM to extract the bit's actual name from the noisy
+    # YouTube/Bilibili title (unless caller passed an explicit override).
+    if not title_override and raw_title:
+        try:
+            from pipeline.postprocess.title_clean import clean_title
+            cleaned = clean_title(
+                raw_title, group_display=group_slug or "", language=language
+            )
+            if cleaned and len(cleaned) <= 60:
+                title = cleaned
+        except Exception as e:
+            import sys
+            print(f"  title-clean: {e}", file=sys.stderr)
     if len(title) > 80:
         title = title[:80].rstrip() + "…"
     group = group_slug or "unknown"
@@ -347,27 +361,45 @@ def write_script(
     }
 
     # Translation: if source isn't zh, translate each line to Chinese.
+    zh_lines: list[str] | None = None
     if not (language or "").lower().startswith("zh"):
         try:
             from pipeline.translate.qwen_text import translate_to_zh
 
             body_texts = [text for _sp, _t, text in lines]
-            zh_lines = translate_to_zh(body_texts, language)
-            if zh_lines:
-                frontmatter["translations"] = {"zh": zh_lines}
+            zh_translated = translate_to_zh(body_texts, language)
+            if zh_translated and len(zh_translated) == len(lines):
+                zh_lines = zh_translated
         except Exception as e:
             import sys
             print(f"  translate: {e}; skipping zh translations", file=sys.stderr)
 
-    body: list[str] = [
-        "",
-        "<!-- speaker keys are placeholders; map them in frontmatter `speakers` -->",
-        "",
-    ]
-    for sp, t, text in lines:
-        body.append(f"**{sp}** [{_hms(t)}] {text}")
-        body.append("")
+    # Build structured utterances and write to sibling
+    # web/src/content/dialogues/<slug>.yaml. Entry .md keeps only the
+    # frontmatter — body is empty.
+    utterances: list[dict] = []
+    for i, (sp, t, text) in enumerate(lines):
+        u: dict = {
+            "id": f"u{i + 1}",
+            "t": _hms(t),
+            "speaker": sp,
+            "text": text,
+        }
+        if zh_lines is not None:
+            u["translations"] = {"zh": zh_lines[i]}
+        utterances.append(u)
+
+    dialogues_dir = out_dir.parent / "dialogues"
+    dialogues_dir.mkdir(parents=True, exist_ok=True)
+    dialogue_path = dialogues_dir / f"{out_path.stem}.yaml"
+    dialogue_path.write_text(
+        yaml.safe_dump(
+            {"utterances": utterances},
+            allow_unicode=True,
+            sort_keys=False,
+        )
+    )
 
     fm_yaml = yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False).strip()
-    out_path.write_text(f"---\n{fm_yaml}\n---\n" + "\n".join(body))
+    out_path.write_text(f"---\n{fm_yaml}\n---\n")
     return out_path

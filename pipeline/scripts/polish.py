@@ -83,6 +83,12 @@ def _polish_batch(client, model: str, lines: list[str], context: str) -> list[st
     return [str(o).strip() if o else lines[i] for i, o in enumerate(out)]
 
 
+def _resolve_dialogue_path(md: Path) -> Path:
+    """Sibling structured-dialogue file: web/src/content/dialogues/<slug>.yaml.
+    md is web/src/content/manzai/<slug>.md."""
+    return md.parent.parent / "dialogues" / f"{md.stem}.yaml"
+
+
 def main(md_path: str) -> None:
     md = Path(md_path).resolve()
     text = md.read_text()
@@ -90,7 +96,6 @@ def main(md_path: str) -> None:
     if len(parts) < 3:
         raise ValueError("md missing frontmatter")
     fm = yaml.safe_load(parts[1]) or {}
-    body = parts[2]
 
     title = fm.get("title", "")
     perf = fm.get("performers", ["?"])[0]
@@ -98,13 +103,11 @@ def main(md_path: str) -> None:
     language = fm.get("language", "zh")
     roles = fm.get("roles") or {}
 
-    # Pull canonical member names from the performer registry so the LLM
-    # can fix homophone misrecognitions of names (徐昊伦 → 徐浩伦, etc.).
     member_names: list[str] = list(roles.keys())
     if not member_names:
         try:
             registry = (
-                md.parent.parent.parent / "performers" / f"{perf}.yaml"
+                md.parent.parent / "performers" / f"{perf}.yaml"
             )
             if registry.exists():
                 data = yaml.safe_load(registry.read_text()) or {}
@@ -133,24 +136,37 @@ def main(md_path: str) -> None:
         f"{role_block}{name_block}"
     )
 
-    body_lines: list[tuple[int, str, str]] = []  # (file_line_idx, text, prefix)
-    file_lines = body.splitlines()
-    for i, raw in enumerate(file_lines):
-        m = _LINE_RE.match(raw)
-        if not m:
-            continue
-        sp, ts, txt = m.groups()
-        body_lines.append((i, txt, f"**{sp}** [{ts}] "))
+    # Prefer the structured dialogue file; fall back to in-body parsing
+    # for legacy entries.
+    dialogue_path = _resolve_dialogue_path(md)
+    dialogue: dict | None = None
+    body_fallback = False
+    texts: list[str]
+    if dialogue_path.exists():
+        dialogue = yaml.safe_load(dialogue_path.read_text()) or {}
+        utterances = dialogue.get("utterances") or []
+        texts = [str(u.get("text") or "") for u in utterances]
+    else:
+        body_fallback = True
+        body = parts[2]
+        body_lines: list[tuple[int, str, str]] = []
+        file_lines = body.splitlines()
+        for i, raw in enumerate(file_lines):
+            m = _LINE_RE.match(raw)
+            if not m:
+                continue
+            sp, ts, txt = m.groups()
+            body_lines.append((i, txt, f"**{sp}** [{ts}] "))
+        texts = [b[1] for b in body_lines]
 
-    if not body_lines:
-        print("no body lines; nothing to do")
+    if not texts:
+        print("no utterances; nothing to do")
         return
 
     model = os.environ.get("QWEN_POLISH_MODEL") or "qwen-max"
-    print(f"polishing {len(body_lines)} lines with {model} …")
+    print(f"polishing {len(texts)} lines with {model} …")
 
     client = _client()
-    texts = [b[1] for b in body_lines]
     polished: list[str] = []
     for i in range(0, len(texts), _BATCH):
         batch = texts[i : i + _BATCH]
@@ -161,12 +177,31 @@ def main(md_path: str) -> None:
     diff = sum(1 for a, b in zip(texts, polished) if a != b)
     print(f"changed {diff} / {len(texts)} lines")
 
-    # Write back
-    for j, (file_idx, _orig, prefix) in enumerate(body_lines):
-        file_lines[file_idx] = prefix + polished[j]
-    new_body = "\n".join(file_lines)
-    md.write_text(f"---\n{parts[1].strip()}\n---{new_body}")
-    print(f"wrote {md}")
+    if not body_fallback and dialogue is not None:
+        utterances = dialogue.get("utterances") or []
+        for u, new_text in zip(utterances, polished):
+            u["text"] = new_text
+        dialogue["utterances"] = utterances
+        dialogue_path.write_text(
+            yaml.safe_dump(dialogue, allow_unicode=True, sort_keys=False)
+        )
+        print(f"wrote {dialogue_path}")
+    else:
+        # Legacy path: rewrite md body in place
+        body = parts[2]
+        file_lines = body.splitlines()
+        # Rebuild body_lines for the rewrite step
+        idx = 0
+        for i, raw in enumerate(file_lines):
+            m = _LINE_RE.match(raw)
+            if not m:
+                continue
+            sp, ts, _ = m.groups()
+            file_lines[i] = f"**{sp}** [{ts}] {polished[idx]}"
+            idx += 1
+        new_body = "\n".join(file_lines)
+        md.write_text(f"---\n{parts[1].strip()}\n---{new_body}")
+        print(f"wrote {md} (legacy in-body path)")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,22 @@ def cli():
     """manzai-archive ingestion pipeline."""
 
 
+def _load_members(group_slug: str, content_dir: Path) -> list[str]:
+    """Read member names (in declared order) from the performer YAML.
+    Returns [] if no YAML or no members."""
+    try:
+        py = content_dir.parent / "performers" / f"{group_slug}.yaml"
+        if not py.exists():
+            return []
+        data = yaml.safe_load(py.read_text()) or {}
+        return [
+            m.get("name") for m in (data.get("members") or [])
+            if m.get("name")
+        ]
+    except Exception:
+        return []
+
+
 @cli.command()
 @click.argument("source")
 @click.option("--group-slug", default=None, help="Slug of the performer group (e.g. nakagawake)")
@@ -77,9 +93,26 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
         speakers = sorted({t.speaker for t in turns})
         console.print(f"  using ASR-supplied turns: {len(turns)}, speakers={speakers}")
     else:
-        turns = diarize(fetched.audio_path, num_speakers=num_speakers)
-        speakers = sorted({t.speaker for t in turns})
-        console.print(f"  {len(turns)} turns, speakers={speakers}")
+        # Try word-level voiceprint diarization when we know the group's
+        # members. Refs are bootstrapped from self-intro lines in the
+        # ASR output. Falls back to pyannote if not enough refs.
+        members = _load_members(group_slug, config.CONTENT_DIR) if group_slug else []
+        turns = []
+        if len(members) >= 2:
+            from pipeline.diarize.word_voiceprint import diarize_by_voiceprint
+            turns, _word_labels = diarize_by_voiceprint(
+                fetched.audio_path, words, members
+            )
+            speakers = sorted({t.speaker for t in turns})
+            if turns:
+                console.print(
+                    f"  word-voiceprint: {len(turns)} turns, "
+                    f"speakers={speakers}"
+                )
+        if not turns:
+            turns = diarize(fetched.audio_path, num_speakers=num_speakers)
+            speakers = sorted({t.speaker for t in turns})
+            console.print(f"  pyannote: {len(turns)} turns, speakers={speakers}")
 
     console.rule("[bold]4/4 write")
     from pipeline.asr.transcribe import _resolve_backend
