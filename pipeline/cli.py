@@ -66,6 +66,7 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
         initial_prompt=prompt,
         group_slug=group_slug,
         content_dir=config.CONTENT_DIR,
+        raw_title=fetched.title or "",
     )
     console.print(f"  {len(words)} segments, language={detected_lang}")
 

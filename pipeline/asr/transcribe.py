@@ -200,6 +200,7 @@ def transcribe(
     initial_prompt: Optional[str] = None,
     group_slug: Optional[str] = None,
     content_dir: Optional[Path] = None,
+    raw_title: str = "",
 ) -> tuple[list[Word], str, Optional[list]]:
     """Return (words, detected_language, optional_turns).
 
@@ -211,7 +212,7 @@ def transcribe(
     if backend == "qwen-omni":
         from pipeline.asr.qwen_omni import transcribe_qwen_omni
         return transcribe_qwen_omni(
-            audio, language, group_slug or "unknown", content_dir
+            audio, language, group_slug or "unknown", content_dir, raw_title=raw_title
         )
     if backend == "qwen":
         from pipeline.asr.qwen import transcribe_qwen

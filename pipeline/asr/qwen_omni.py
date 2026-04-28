@@ -22,22 +22,41 @@ import yaml
 from .transcribe import Word
 
 
-def _to_mp3(src: Path, bitrate: str = "64k") -> Path:
-    """Compress to mono 16kHz mp3 to stay well under the 28 MB JSON-string
-    limit on DashScope's input_audio data URI."""
+_CHUNK_SEC = 180  # 3-min chunks; one ~16k-token JSON response per chunk fits
+
+
+def _ffprobe_duration(path: Path) -> float:
+    out = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True, text=True, check=True,
+    )
+    return float(out.stdout.strip() or 0.0)
+
+
+def _to_mp3(src: Path, bitrate: str = "64k", start: float = 0.0, end: Optional[float] = None) -> Path:
+    """Compress to mono 16kHz mp3, optionally slicing [start, end). Used to
+    stay under the 28 MB JSON-string limit on DashScope's input_audio data URI
+    and to keep each chunk's transcript output within max_tokens."""
     fd, out = tempfile.mkstemp(suffix=".mp3")
     os.close(fd)
-    subprocess.run(
-        [
-            "ffmpeg", "-y",
-            "-i", str(src),
-            "-ac", "1", "-ar", "16000",
-            "-b:a", bitrate,
-            "-loglevel", "error",
-            out,
-        ],
-        check=True,
-    )
+    args = ["ffmpeg", "-y"]
+    if start > 0:
+        args += ["-ss", f"{start}"]
+    if end is not None:
+        args += ["-to", f"{end}"]
+    args += [
+        "-i", str(src),
+        "-ac", "1", "-ar", "16000",
+        "-b:a", bitrate,
+        "-loglevel", "error",
+        out,
+    ]
+    subprocess.run(args, check=True)
     return Path(out)
 
 
@@ -55,6 +74,25 @@ def _client():
     return OpenAI(api_key=api_key, base_url=base_url)
 
 
+def _salvage_partial(raw: str) -> dict:
+    """Best-effort recovery from truncated JSON: extract whatever segment
+    objects parsed cleanly before the cutoff."""
+    title_m = re.search(r'"title"\s*:\s*"([^"]*)"', raw)
+    title = title_m.group(1) if title_m else ""
+    seg_pat = re.compile(
+        r'\{"speaker"\s*:\s*"([^"]+)"\s*,\s*"start"\s*:\s*([0-9.]+)\s*,\s*"end"\s*:\s*([0-9.]+)\s*,\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}',
+    )
+    segs = []
+    for m in seg_pat.finditer(raw):
+        segs.append({
+            "speaker": m.group(1),
+            "start": float(m.group(2)),
+            "end": float(m.group(3)),
+            "text": m.group(4).encode().decode("unicode_escape", errors="replace"),
+        })
+    return {"title": title, "segments": segs}
+
+
 def _model_name() -> str:
     # Don't fall through to QWEN_MODEL/VLM_MODEL — those are for the
     # ASR-task model (qwen3-asr-flash) which doesn't accept this prompt
@@ -66,7 +104,12 @@ def _b64(path: Path, mime: str = "audio/mpeg") -> str:
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
 
 
-def _build_prompt(group_slug: str, content_dir: Path, language: Optional[str]) -> str:
+def _build_prompt(
+    group_slug: str,
+    content_dir: Path,
+    language: Optional[str],
+    raw_title: str = "",
+) -> str:
     members_block = ""
     member_names: list[str] = []
     try:
@@ -103,32 +146,43 @@ def _build_prompt(group_slug: str, content_dir: Path, language: Optional[str]) -
             "用搭档间 setup / 吐槽 的对比，加上声音特征区分两位演员。"
         )
 
+    title_block = ""
+    if raw_title:
+        title_block = f'\nPublished video title: "{raw_title}"\n'
+
     return f"""You are an expert at transcribing comedy duo (manzai / 漫才) performances.
 
 Performers:
 {members_block}
-{cue_hint}
-
+{cue_hint}{title_block}
 Task:
 1. Listen to the entire audio.
 2. Output a single JSON object (no other text, no markdown fences):
    {{"title": "<short clean title>", "segments": [...]}}
-3. The "title" should be the bit's name only — the Japanese 演目名 or
-   Chinese 段子名 — without the show name, year, host channel, hashtags,
-   or "by <performer>" preamble. Examples of GOOD titles:
-   - 「保険の契約」
-   - 「人間ドック」
-   - 「骗假不留」
-   - 「听不懂话的理发师」
-   Use the same script (kanji / hangzi) as the audio; surround with 「」.
+3. The "title" MUST be derived from the published video title above.
+   Extract just the bit name (演目名 / 段子名), removing:
+   - hashtags (#xxx), channel name, year suffixes (「2025央视春晚」etc.)
+   - host show brackets ([xxx综艺], 「CCTV春晚」)
+   - "by <performer>" / "<performer>演绎" prefixes
+   Keep the original wording exactly — do NOT paraphrase or summarize.
+   Wrap in 「」 if not already. Examples:
+   - "中川家の寄席2024　「保険の契約」" → "「保険の契約」"
+   - "徐浩伦 谭湘文演绎对口白话《骗假不留》#脱口秀 #2025央视春晚" → "「骗假不留」"
+   - "中川家の寄席 016「人間ドック」" → "「人間ドック」"
+   If the published title has no extractable bit name, only then infer
+   one from content.
 4. Each segment MUST be: {{"speaker": "<one of the names above>",
    "start": <seconds float>, "end": <seconds float>,
    "text": "<verbatim transcript including 语气词 / fillers / interjections>"}}
+   IMPORTANT: "speaker" MUST be the literal performer NAME from the list
+   above (e.g. "中川剛", not "ツッコミ"; "徐浩伦", not "甲"). Never use
+   role labels.
 5. Split into natural sentence-sized turns (≤30s each). Preserve filler
    words (ええ, あー, 嗯, 哎呀, etc.).
 6. Use voice characteristics first; fall back to role-based linguistic
    cues if voices are similar.
-7. Do NOT translate; transcribe in the original spoken language."""
+7. Do NOT translate; transcribe in the original spoken language.
+8. The output MUST be a complete, well-formed JSON object — no truncation."""
 
 
 # Stash for the most-recent qwen-omni call's title (read by cli.py).
@@ -140,6 +194,7 @@ def transcribe_qwen_omni(
     language: Optional[str] = None,
     group_slug: str = "unknown",
     content_dir: Optional[Path] = None,
+    raw_title: str = "",
 ) -> tuple[list[Word], str, list]:
     """Returns (words, detected_lang, turns) where turns has speaker == member
     name. Caller should bypass pyannote when turns is non-empty.
@@ -149,56 +204,91 @@ def transcribe_qwen_omni(
     from pipeline.diarize.speakers import Turn
 
     client = _client()
-    prompt = _build_prompt(group_slug, content_dir or Path("."), language)
+    prompt = _build_prompt(
+        group_slug, content_dir or Path("."), language, raw_title=raw_title
+    )
 
-    mp3 = _to_mp3(audio)
-    try:
-        completion = client.chat.completions.create(
-            model=_model_name(),
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Output strictly valid JSON. No markdown. No commentary.",
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_audio",
-                            "input_audio": {"data": _b64(mp3), "format": "mp3"},
-                        },
-                        {"type": "text", "text": prompt},
-                    ],
-                },
-            ],
-            modalities=["text"],
-        )
-    finally:
-        mp3.unlink(missing_ok=True)
-    raw = (completion.choices[0].message.content or "").strip()
-    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.M).strip()
+    duration = _ffprobe_duration(audio)
+    chunk_starts = [s for s in range(0, int(duration), _CHUNK_SEC)] or [0]
 
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        # Try to find a top-level object first, then array fallback
-        obj_match = re.search(r"\{[\s\S]*\}\s*$", raw)
-        arr_match = re.search(r"\[[\s\S]*\]", raw)
-        candidate = obj_match.group(0) if obj_match else (arr_match.group(0) if arr_match else None)
-        if not candidate:
-            raise RuntimeError(f"qwen-omni did not return JSON: {raw[:300]}")
-        data = json.loads(candidate)
+    chunk_titles: list[str] = []
+    all_segments: list[dict] = []
 
-    title = ""
-    if isinstance(data, dict):
-        title = str(data.get("title") or "").strip()
-        segments = data.get("segments") or []
-    else:
-        segments = data
+    for cstart in chunk_starts:
+        cend = min(cstart + _CHUNK_SEC, duration)
+        mp3 = _to_mp3(audio, start=cstart, end=cend)
+        try:
+            completion = client.chat.completions.create(
+                model=_model_name(),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Output strictly valid JSON. No markdown. No commentary.",
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_audio",
+                                "input_audio": {"data": _b64(mp3), "format": "mp3"},
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    },
+                ],
+                modalities=["text"],
+                max_tokens=16384,
+            )
+        finally:
+            mp3.unlink(missing_ok=True)
+
+        raw = (completion.choices[0].message.content or "").strip()
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.M).strip()
+
+        data = None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            obj_match = re.search(r"\{[\s\S]*\}\s*$", raw)
+            arr_match = re.search(r"\[[\s\S]*\]\s*$", raw)
+            candidate = obj_match.group(0) if obj_match else (arr_match.group(0) if arr_match else None)
+            if candidate:
+                try:
+                    data = json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+        if data is None:
+            data = _salvage_partial(raw)
+            if not data.get("segments"):
+                raise RuntimeError(
+                    f"qwen-omni chunk @{cstart}s gave no parseable segments: {raw[:300]}"
+                )
+            print(f"  chunk @{cstart}s: salvaged {len(data['segments'])} segments from truncated response")
+
+        ctitle = ""
+        if isinstance(data, dict):
+            ctitle = str(data.get("title") or "").strip()
+            csegs = data.get("segments") or []
+        else:
+            csegs = data
+        if ctitle:
+            chunk_titles.append(ctitle)
+
+        # Offset segment timestamps by chunk start
+        for s in csegs:
+            try:
+                s["start"] = float(s.get("start", 0)) + cstart
+                s["end"] = float(s.get("end", s["start"])) + cstart
+                all_segments.append(s)
+            except (TypeError, ValueError):
+                continue
+
+    # Pick the first non-empty chunk title as the canonical bit name
+    title = next((t for t in chunk_titles if t), "")
 
     words: list[Word] = []
     turns: list[Turn] = []
-    for item in segments:
+    for item in all_segments:
         speaker = str(item.get("speaker") or "unknown").strip()
         start = float(item.get("start") or 0.0)
         end = float(item.get("end") or start)
