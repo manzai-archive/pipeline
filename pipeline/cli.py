@@ -82,6 +82,14 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.rule("[bold]4/4 write")
     from pipeline.asr.transcribe import _resolve_backend
     actual_backend = _resolve_backend(detected_lang)
+
+    # qwen-omni stashes a clean model-generated title; prefer it over the
+    # raw video title (which often has hashtags / channel / show name junk).
+    if title is None and actual_backend == "qwen-omni":
+        from pipeline.asr import qwen_omni as _qo
+        if _qo.LAST_TITLE:
+            title = _qo.LAST_TITLE
+            console.print(f"  title (model-generated): {title}")
     import os
     if actual_backend == "qwen-omni":
         asr_model = os.environ.get("QWEN_OMNI_MODEL") or "qwen3-omni-flash"
