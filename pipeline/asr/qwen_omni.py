@@ -22,9 +22,10 @@ import yaml
 from .transcribe import Word
 
 
-_CHUNK_SEC = 120  # 2-min chunks. Earlier 180s sometimes truncated dense
-                  # Japanese transcripts at the 16k-token output limit, dropping
-                  # ~30s tail of each chunk. 120s fits comfortably.
+_CHUNK_SEC = 60   # 1-min chunks. Smaller chunks → more API calls but each
+                  # output stays well under 16k tokens, and one bad chunk
+                  # only loses 60s instead of 120s. Good for dense fast
+                  # back-and-forth dialogue.
 
 
 def _ffprobe_duration(path: Path) -> float:
