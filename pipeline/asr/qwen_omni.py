@@ -56,12 +56,10 @@ def _client():
 
 
 def _model_name() -> str:
-    return (
-        os.environ.get("QWEN_OMNI_MODEL")
-        or os.environ.get("QWEN_MODEL")
-        or os.environ.get("VLM_MODEL")
-        or "qwen3-omni-flash"
-    )
+    # Don't fall through to QWEN_MODEL/VLM_MODEL — those are for the
+    # ASR-task model (qwen3-asr-flash) which doesn't accept this prompt
+    # format. qwen-omni needs the multimodal-instruction model.
+    return os.environ.get("QWEN_OMNI_MODEL") or "qwen3-omni-flash"
 
 
 def _b64(path: Path, mime: str = "audio/mpeg") -> str:
