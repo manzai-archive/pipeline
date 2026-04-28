@@ -73,9 +73,11 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.print(f"  {len(turns)} turns, speakers={speakers}")
 
     console.rule("[bold]4/4 write")
-    if config.ASR_BACKEND == "sensevoice":
+    from pipeline.asr.transcribe import _resolve_backend
+    actual_backend = _resolve_backend(detected_lang)
+    if actual_backend == "sensevoice":
         asr_model = "FunAudioLLM/SenseVoiceSmall"
-    elif config.ASR_BACKEND == "mlx":
+    elif actual_backend == "mlx":
         asr_model = config.MLX_WHISPER_REPO
     else:
         asr_model = config.WHISPER_MODEL
@@ -89,7 +91,7 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
         tags=list(tags),
         sensitivity=sensitivity,
         language=detected_lang,
-        asr_backend=config.ASR_BACKEND,
+        asr_backend=actual_backend,
         asr_model=asr_model,
     )
     console.print(f"  → {out}")

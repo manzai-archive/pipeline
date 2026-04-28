@@ -173,13 +173,31 @@ def _transcribe_faster(audio, language, initial_prompt) -> tuple[list[Word], str
     return words, detected
 
 
+def _resolve_backend(language: Optional[str]) -> str:
+    """Backend selection.
+
+    ASR_BACKEND=auto picks per-language because SenseVoice-Small (234M) is
+    SOTA for Chinese but noticeably worse than Whisper-large-v3 for Japanese.
+    Force a specific backend with ASR_BACKEND=sensevoice|faster|mlx.
+    """
+    b = config.ASR_BACKEND
+    if b != "auto":
+        return b
+    lang = (language or "").lower()
+    if lang.startswith("ja"):
+        # Whisper-large-v3 is much stronger than SenseVoice on Japanese.
+        # On Apple Silicon we'd prefer mlx-whisper; in container we run faster-whisper on CUDA.
+        return "mlx" if config.IS_APPLE_SILICON else "faster"
+    return "sensevoice"
+
+
 def transcribe(
     audio: Path,
     language: Optional[str] = None,
     initial_prompt: Optional[str] = None,
 ) -> tuple[list[Word], str]:
     """Return (words, detected_language). language=None → auto-detect."""
-    backend = config.ASR_BACKEND
+    backend = _resolve_backend(language)
     if backend == "sensevoice":
         return _transcribe_sensevoice(audio, language, initial_prompt)
     if backend == "mlx":

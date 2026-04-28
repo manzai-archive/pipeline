@@ -75,7 +75,7 @@ RUN pip install -e .
 # Users set proxy at runtime via .env if needed.
 ENV HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= NO_PROXY= no_proxy=
 
-ENV ASR_BACKEND=sensevoice \
+ENV ASR_BACKEND=auto \
     WHISPER_DEVICE=cuda \
     WHISPER_COMPUTE_TYPE=float16 \
     WHISPER_MODEL=large-v3-turbo \
