@@ -39,6 +39,7 @@ URLS=(
   # 漫才兄弟 (徐浩伦 + 谭湘文) — Chinese manzai
   "https://www.youtube.com/watch?v=VVVqPKkS9zc|manzai-brothers|央视春晚,2025,骗假不留|normal|zh"
   "https://www.youtube.com/watch?v=_Fw3jXi5Eyk|manzai-brothers|湖南春晚,2025,理发师|normal|zh"
+  "https://www.youtube.com/watch?v=STTxgW1QeqI|manzai-brothers|央视春晚,2026,谁的菜|normal|zh"
 )
 
 run_one() {
