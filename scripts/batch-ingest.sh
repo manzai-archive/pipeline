@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Overnight batch via Docker container.
+# Batch ingest via Docker container.
 # Each URL: docker compose run -> ingest -> commit + push web repo.
 #
 # Run from pipeline repo root on a Docker+GPU host:
-#   ./scripts/overnight-docker.sh
+#   ./scripts/batch-ingest.sh
 #
 # Requires: docker compose build done; .env with HF_TOKEN; ../web cloned;
 #           git push to ../web works (gh auth or SSH key).
