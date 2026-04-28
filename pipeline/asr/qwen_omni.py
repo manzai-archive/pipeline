@@ -244,6 +244,7 @@ def transcribe_qwen_omni(
     chunk_titles: list[str] = []
     chunk_forms: list[str] = []
     chunk_roles: list[dict] = []
+    detected_lang_chunks: list[str] = []
     all_segments: list[dict] = []
 
     for cstart in chunk_starts:
@@ -299,10 +300,12 @@ def transcribe_qwen_omni(
 
         ctitle = ""
         cform = ""
+        clang = ""
         croles: dict = {}
         if isinstance(data, dict):
             ctitle = str(data.get("title") or "").strip()
             cform = str(data.get("form") or "").strip().lower()
+            clang = str(data.get("language") or "").strip().lower()
             raw_roles = data.get("roles") or {}
             if isinstance(raw_roles, dict):
                 croles = {str(k): str(v) for k, v in raw_roles.items()}
@@ -353,4 +356,5 @@ def transcribe_qwen_omni(
     LAST_TITLE = title
     LAST_FORM = form
     LAST_ROLES = roles
-    return words, (language or "auto"), turns
+    final_lang = language or (detected_lang_chunks[0] if detected_lang_chunks else "ja")
+    return words, final_lang, turns
