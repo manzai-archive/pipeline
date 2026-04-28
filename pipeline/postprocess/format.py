@@ -270,6 +270,19 @@ def write_script(
         },
     }
 
+    # Translation: if source isn't zh, translate each line to Chinese.
+    if not (language or "").lower().startswith("zh"):
+        try:
+            from pipeline.translate.qwen_text import translate_to_zh
+
+            body_texts = [text for _sp, _t, text in lines]
+            zh_lines = translate_to_zh(body_texts, language)
+            if zh_lines:
+                frontmatter["translations"] = {"zh": zh_lines}
+        except Exception as e:
+            import sys
+            print(f"  translate: {e}; skipping zh translations", file=sys.stderr)
+
     body: list[str] = [
         "",
         "<!-- speaker keys are placeholders; map them in frontmatter `speakers` -->",
