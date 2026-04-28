@@ -10,11 +10,11 @@ from .transcribe import Word
 
 
 _QWEN_LANG_HINT = {
-    "zh": "Mandarin Chinese",
-    "ja": "Japanese",
-    "en": "English",
-    "ko": "Korean",
-    "yue": "Cantonese",
+    "zh": "zh", "zh-cn": "zh", "zh-tw": "zh",
+    "ja": "ja",
+    "en": "en",
+    "ko": "ko",
+    "yue": "yue",
 }
 
 # qwen3-asr-flash hard cap is 5 minutes / 10 MB per request.
@@ -90,6 +90,8 @@ def _transcribe_chunk(client, audio: Path, language: Optional[str]) -> str:
     extra_body = {}
     lang_hint = _QWEN_LANG_HINT.get((language or "").lower())
     if lang_hint:
+        # DashScope wants a 2-letter code in asr_options.language; if absent,
+        # the model auto-detects.
         extra_body["asr_options"] = {"language": lang_hint}
 
     completion = client.chat.completions.create(
