@@ -82,8 +82,10 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.rule("[bold]4/4 write")
     from pipeline.asr.transcribe import _resolve_backend
     actual_backend = _resolve_backend(detected_lang)
-    if actual_backend == "qwen":
-        import os
+    import os
+    if actual_backend == "qwen-omni":
+        asr_model = os.environ.get("QWEN_OMNI_MODEL") or "qwen3-omni-flash"
+    elif actual_backend == "qwen":
         asr_model = os.environ.get("QWEN_MODEL") or os.environ.get("VLM_MODEL") or "qwen3-asr-flash"
     elif actual_backend == "sensevoice":
         asr_model = "FunAudioLLM/SenseVoiceSmall"

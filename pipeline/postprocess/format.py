@@ -201,17 +201,31 @@ def write_script(
     lines = _group_into_lines(words, turns)
     speakers = sorted({sp for sp, _, _ in lines})
 
-    # Auto-map cluster ids → member names via enrolled voiceprints
-    speaker_map = _resolve_speaker_names(
-        audio_path=fetched.audio_path,
-        turns=turns,
-        content_dir=out_dir,
-        group_slug=group,
+    # If turns already have member names (qwen-omni), use as-is. Else try
+    # to map via enrolled voice signatures.
+    cluster_ids = sorted({t.speaker for t in turns})
+    looks_like_real_names = bool(cluster_ids) and not any(
+        c.startswith("SPEAKER_") for c in cluster_ids
     )
-    # Ensure every speaker present in lines has an entry
-    speaker_field = {s: speaker_map.get(s, s) for s in speakers}
-    matched_count = sum(1 for s, name in speaker_field.items() if name != s)
-    auto_status = "reviewed" if matched_count == len(speaker_field) and matched_count > 0 else "draft"
+    if looks_like_real_names:
+        speaker_field = {s: s for s in speakers}
+        auto_status = "reviewed"
+    else:
+        speaker_map = _resolve_speaker_names(
+            audio_path=fetched.audio_path,
+            turns=turns,
+            content_dir=out_dir,
+            group_slug=group,
+        )
+        speaker_field = {s: speaker_map.get(s, s) for s in speakers}
+        matched_count = sum(
+            1 for s, name in speaker_field.items() if name != s
+        )
+        auto_status = (
+            "reviewed"
+            if matched_count == len(speaker_field) and matched_count > 0
+            else "draft"
+        )
 
     frontmatter = {
         "title": title,
