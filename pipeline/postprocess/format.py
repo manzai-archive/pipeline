@@ -107,6 +107,45 @@ def _iso_date(yyyymmdd: str) -> str:
     return yyyymmdd
 
 
+def _resolve_speaker_names(
+    audio_path: Path,
+    turns: list,
+    content_dir: Path,
+    group_slug: str,
+) -> dict[str, str]:
+    """Try to map cluster ids (SPEAKER_00, ...) to real member names via
+    enrolled voice embeddings. Returns mapping for frontmatter `speakers:`."""
+    try:
+        import yaml as _yaml
+        from pipeline.diarize.enroll import (
+            load_group_embeddings, assign_clusters_to_members, member_slug,
+        )
+
+        web_root = content_dir.parent
+        embeddings_dir = web_root / "voice_embeddings"
+        enrolled = load_group_embeddings(group_slug, embeddings_dir)
+        if not enrolled:
+            return {sp: sp for sp in sorted({t.speaker for t in turns})}
+
+        # Read group YAML for member display names
+        group_yaml = web_root / "performers" / f"{group_slug}.yaml"
+        member_display: dict[str, str] = {}
+        if group_yaml.exists():
+            data = _yaml.safe_load(group_yaml.read_text()) or {}
+            for m in data.get("members") or []:
+                name = m.get("name") or ""
+                member_display[member_slug(name)] = name
+
+        return assign_clusters_to_members(
+            audio_path, turns, enrolled, member_display
+        )
+    except Exception as e:
+        # Fall back gracefully — never block ingest because of voice match issues.
+        import sys
+        print(f"  voice-match: {e}; falling back to cluster ids", file=sys.stderr)
+        return {sp: sp for sp in sorted({t.speaker for t in turns})}
+
+
 def _ensure_performer(content_dir: Path, slug: str, language: str) -> None:
     """Auto-stub a performer file if it doesn't exist yet, so build doesn't
     fail on first ingest of a new group. The stub has TODO fields for the
@@ -162,6 +201,18 @@ def write_script(
     lines = _group_into_lines(words, turns)
     speakers = sorted({sp for sp, _, _ in lines})
 
+    # Auto-map cluster ids → member names via enrolled voiceprints
+    speaker_map = _resolve_speaker_names(
+        audio_path=fetched.audio_path,
+        turns=turns,
+        content_dir=out_dir,
+        group_slug=group,
+    )
+    # Ensure every speaker present in lines has an entry
+    speaker_field = {s: speaker_map.get(s, s) for s in speakers}
+    matched_count = sum(1 for s, name in speaker_field.items() if name != s)
+    auto_status = "reviewed" if matched_count == len(speaker_field) and matched_count > 0 else "draft"
+
     frontmatter = {
         "title": title,
         "performers": [group],
@@ -180,9 +231,9 @@ def write_script(
         },
         "language": language,
         "tags": tags,
-        "speakers": {s: s for s in speakers},
+        "speakers": speaker_field,
         "sensitivity": sensitivity,
-        "status": "draft",
+        "status": auto_status,
         "contributed_by": DEFAULT_CONTRIBUTOR,
         "ingestion": {
             "pipeline_version": _pipeline_version(),

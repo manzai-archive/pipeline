@@ -101,6 +101,22 @@ def ingest(source, group_slug, title, tags, sensitivity, language, num_speakers)
     console.rule("[green]done")
 
 
+@cli.command("enroll-group")
+@click.argument("group_slug")
+def enroll_group_cmd(group_slug):
+    """Compute voice embeddings for each member of a group with voice_samples."""
+    from pathlib import Path as _P
+    from pipeline.diarize.enroll import enroll_group
+
+    web_root = config.WORKSPACE_ROOT / "web" / "src" / "content"
+    performers_dir = web_root / "performers"
+    embeddings_dir = web_root / "voice_embeddings"
+    written = enroll_group(group_slug, performers_dir, embeddings_dir)
+    for mslug, path in written.items():
+        console.print(f"  → {path.name}  (member: {mslug})")
+    console.print(f"[green]enrolled {len(written)} members for {group_slug}[/]")
+
+
 @cli.command()
 @click.option(
     "--batch-file",
