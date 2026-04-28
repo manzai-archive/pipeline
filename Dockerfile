@@ -6,7 +6,7 @@
 # Run:     docker compose run --rm pipeline ingest <url> --group-slug nakagawake
 # GPU:     requires nvidia-container-toolkit on host; compose passes --gpus all.
 
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 # Optional build-time proxy (for restricted networks). Pass via:
 #   HTTP_PROXY=http://host:port HTTPS_PROXY=... docker compose build
@@ -43,8 +43,8 @@ RUN python3.12 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 RUN pip install --upgrade pip wheel
 
-# PyTorch with CUDA 12.4 wheels
-RUN pip install --index-url https://download.pytorch.org/whl/cu124 \
+# PyTorch with CUDA 12.6 wheels (forward-compatible with the 12.6 base)
+RUN pip install --index-url https://download.pytorch.org/whl/cu126 \
         torch torchaudio
 
 # Pipeline runtime deps. Install separately from the package so the layer
