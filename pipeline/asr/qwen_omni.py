@@ -22,7 +22,9 @@ import yaml
 from .transcribe import Word
 
 
-_CHUNK_SEC = 180  # 3-min chunks; one ~16k-token JSON response per chunk fits
+_CHUNK_SEC = 120  # 2-min chunks. Earlier 180s sometimes truncated dense
+                  # Japanese transcripts at the 16k-token output limit, dropping
+                  # ~30s tail of each chunk. 120s fits comfortably.
 
 
 def _ffprobe_duration(path: Path) -> float:
