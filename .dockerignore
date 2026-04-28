@@ -2,9 +2,8 @@
 __pycache__/
 *.pyc
 *.egg-info/
-build/
-dist/
 .env
+.env.local
 work/
 hf-cache/
 *.wav
@@ -17,3 +16,5 @@ hf-cache/
 .DS_Store
 .idea/
 .vscode/
+.git/
+.gitignore

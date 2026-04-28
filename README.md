@@ -5,6 +5,27 @@ markdown scripts with speaker labels for the [manzai-archive web site](https://g
 
 Maintainer: [wheatfox](https://github.com/enkerewpo)
 
+## Run via Docker (recommended for NVIDIA GPU hosts)
+
+Reproducible across machines, includes CUDA + cuDNN. Requires Docker +
+[nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
+```bash
+git clone https://github.com/manzai-archive/pipeline
+git clone https://github.com/manzai-archive/web      # sibling dir
+cd pipeline
+cp .env.example .env                                  # add HF_TOKEN
+docker compose build                                  # ~5-10 min first time
+docker compose run --rm pipeline ingest <url> --group-slug nakagawake
+```
+
+Output writes to `../web/src/content/manzai/`. HF model cache persists in
+`./hf-cache/` (bind-mounted). First ingest downloads ~3GB of model weights
+(faster-whisper large-v3-turbo + pyannote 3.1 + community-1).
+
+GPU defaults: faster-whisper on CUDA float16, pyannote on CUDA.
+Override via env in `.env` (see `.env.example`).
+
 ## Setup
 
 ```bash

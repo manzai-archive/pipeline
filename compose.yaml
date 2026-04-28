@@ -1,0 +1,47 @@
+# manzai-archive pipeline — compose for GPU-enabled hosts.
+#
+# Quickstart for collaborators:
+#   git clone https://github.com/manzai-archive/pipeline
+#   git clone https://github.com/manzai-archive/web        # sibling dir
+#   cd pipeline && cp .env.example .env                    # then add HF_TOKEN
+#   docker compose build
+#   docker compose run --rm pipeline ingest <url> --group-slug nakagawake
+#
+# Output goes to ../web/src/content/manzai/ on the host.
+# HF model cache lives in ./hf-cache/ (bind mount, persists across runs).
+
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: manzai-archive/pipeline:latest
+    # NVIDIA GPU. Requires nvidia-container-toolkit on host.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Defaults baked into image; override here if needed.
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+    volumes:
+      # HF model cache — kept on host so it persists & is debuggable.
+      - ./hf-cache:/root/.cache/huggingface
+      # Audio scratch dir.
+      - ./work:/workspace/pipeline/work
+      # Web repo for output (default: sibling dir).
+      - ../web:/workspace/web
+      # Live source editing — bind-mount the package over the image's copy.
+      - ./pipeline:/workspace/pipeline/pipeline
+      - ./scripts:/workspace/pipeline/scripts
+      - ./submissions.yaml:/workspace/pipeline/submissions.yaml
+      - ./lexicon.yaml:/workspace/pipeline/lexicon.yaml
+    # Use host network so yt-dlp & HF downloads don't go through docker NAT.
+    # Comment out if running on a multi-tenant host.
+    network_mode: host
