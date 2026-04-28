@@ -238,7 +238,11 @@ def write_script(
     year = (fetched.upload_date or "")[:4] or datetime.now().strftime("%Y")
     # allow_unicode=True keeps CJK characters in slug (much nicer than romanization)
     slug = slugify(title, allow_unicode=True, max_length=40) or fetched.raw_id
-    fname = f"{group}-{year}-{slug}.md"
+    # Append a short source id so two videos with identical model-generated
+    # titles (qwen-omni occasionally hallucinates the same bit name across
+    # different videos) don't collide and overwrite each other.
+    short_id = (fetched.raw_id or "")[:6]
+    fname = f"{group}-{year}-{slug}-{short_id}.md" if short_id else f"{group}-{year}-{slug}.md"
     out_path = out_dir / fname
 
     _ensure_performer(out_dir, group, language)
