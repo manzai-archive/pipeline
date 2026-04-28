@@ -8,7 +8,7 @@
 
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
-# Optional build-time proxy (for restricted networks). Pass via:
+# Optional build-time HTTP proxy. Pass via:
 #   HTTP_PROXY=http://host:port HTTPS_PROXY=... docker compose build
 # These ARGs only affect build steps; runtime proxy is set via .env.
 ARG HTTP_PROXY=
