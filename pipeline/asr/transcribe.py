@@ -52,11 +52,16 @@ _SENSE_LANG_MAP = {
 }
 
 
+_SENT_END_CHARS = set("。.！!?？…")
+_TAG_LANG_RE = __import__("re").compile(r"<\|(zh|zn|ja|en|ko|yue)\|>")
+
+
 def _transcribe_sensevoice(
     audio: Path, language: Optional[str], _initial_prompt: Optional[str]
 ) -> tuple[list[Word], str]:
-    from funasr.utils.postprocess_utils import rich_transcription_postprocess
-
+    """SenseVoice returns one big text per VAD-merge group plus character-
+    level timestamps. We split that into sentence-level segments by walking
+    characters and breaking on terminal punctuation (。.！!?？…)."""
     model = _load_sense()
     sense_lang = _SENSE_LANG_MAP.get((language or "auto").lower(), "auto")
     res = model.generate(
@@ -71,27 +76,41 @@ def _transcribe_sensevoice(
 
     words: list[Word] = []
     detected = language or "auto"
+
     for r in res:
-        # Try to use sentence-level timestamps if present.
-        sentences = r.get("sentence_info") or []
-        if sentences:
-            for s in sentences:
-                txt = rich_transcription_postprocess(s.get("text", ""))
-                if not txt.strip():
-                    continue
-                words.append(
-                    Word(
-                        start=float(s.get("start", 0)) / 1000.0,
-                        end=float(s.get("end", 0)) / 1000.0,
-                        text=txt,
-                    )
-                )
-        else:
-            txt = rich_transcription_postprocess(r.get("text", ""))
-            if txt.strip():
+        # Pull detected language from in-text tags (the only place SenseVoice exposes it).
+        m = _TAG_LANG_RE.search(r.get("text") or "")
+        if m:
+            code = m.group(1)
+            detected = "zh" if code == "zn" else code
+
+        chars = r.get("words") or []
+        ts = r.get("timestamp") or []
+        if len(chars) != len(ts):
+            # Last-resort fallback: dump entire result as one chunk.
+            from funasr.utils.postprocess_utils import rich_transcription_postprocess
+            txt = rich_transcription_postprocess(r.get("text", "")).strip()
+            if txt:
                 words.append(Word(start=0.0, end=0.0, text=txt))
-        if "language" in r:
-            detected = r["language"]
+            continue
+
+        cur_chars: list[str] = []
+        cur_start: Optional[float] = None
+        for ch, (s_ms, e_ms) in zip(chars, ts):
+            if cur_start is None:
+                cur_start = s_ms / 1000.0
+            cur_chars.append(ch)
+            if ch in _SENT_END_CHARS:
+                sent = "".join(cur_chars).strip()
+                if sent:
+                    words.append(Word(start=cur_start, end=e_ms / 1000.0, text=sent))
+                cur_chars = []
+                cur_start = None
+        if cur_chars and cur_start is not None:
+            sent = "".join(cur_chars).strip()
+            if sent:
+                words.append(Word(start=cur_start, end=ts[-1][1] / 1000.0, text=sent))
+
     return words, detected
 
 
